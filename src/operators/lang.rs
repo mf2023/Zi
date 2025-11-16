@@ -1,4 +1,4 @@
-//! Copyright © 2025 Dunimd Team. All Rights Reserved.
+//! Copyright © 2025 Wenze Wei. All Rights Reserved.
 //!
 //! This file is part of Zi.
 //! The Zi project belongs to the Dunimd project team.
@@ -16,6 +16,7 @@
 //! limitations under the License.
 
 use serde_json::{Number, Value};
+use std::collections::HashMap;
 
 use crate::errors::{Result, ZiError};
 use crate::operator::ZiCOperator;
@@ -35,28 +36,226 @@ impl ZiCLangDetect {
     }
 
     fn detect_iso(text: &str) -> &'static str {
-        let (latin, cjk, arabic, cyrillic, total) = script_counts(text);
+        let cleaned = text.trim();
+        if cleaned.is_empty() {
+            return "und";
+        }
+
+        let (latin, cjk, arabic, cyrillic, devanagari, total) = script_counts(cleaned);
         if total == 0 {
             return "und";
         }
-        let max = latin.max(cjk).max(arabic).max(cyrillic);
-        if max == cjk {
-            "zh"
-        } else if max == arabic {
-            "ar"
-        } else if max == cyrillic {
-            "ru"
-        } else {
-            "en"
-        }
+
+        let script_hint = ScriptScores {
+            latin,
+            cjk,
+            arabic,
+            cyrillic,
+            devanagari,
+            total,
+        };
+
+        let trigram_scores = trigram_scores(cleaned, &script_hint);
+        let ascii_ratio = latin as f64 / total as f64;
+        trigram_scores.best_iso(ascii_ratio)
     }
 }
 
-fn script_counts(text: &str) -> (usize, usize, usize, usize, usize) {
+struct ScriptScores {
+    latin: usize,
+    cjk: usize,
+    arabic: usize,
+    cyrillic: usize,
+    devanagari: usize,
+    total: usize,
+}
+
+impl ScriptScores {
+    fn normalized(&self, value: usize) -> f64 {
+        value as f64 / self.total.max(1) as f64
+    }
+}
+
+#[derive(Clone)]
+struct LanguageProfile {
+    iso: &'static str,
+    trigrams: &'static [(&'static str, f64)],
+    script_weight: fn(&ScriptScores) -> f64,
+}
+
+fn trigram_profiles() -> &'static [LanguageProfile] {
+    #[allow(dead_code)]
+    static EN: &[(&str, f64)] = &[
+        (" the", 1.0),
+        ("and", 1.0),
+        ("ing", 1.0),
+        ("ion", 1.0),
+        ("ent", 1.0),
+        ("tha", 1.0),
+    ];
+    static ZH: &[(&str, f64)] = &[
+        ("的", 1.2),
+        ("是", 1.2),
+        ("在", 1.2),
+        ("人", 1.2),
+        ("和", 1.2),
+        ("有", 1.2),
+    ];
+    static AR: &[(&str, f64)] = &[
+        (" ال", 1.1),
+        ("من", 1.1),
+        ("في", 1.1),
+        ("على", 1.1),
+        ("ال", 1.1),
+        ("لا", 1.1),
+    ];
+    static RU: &[(&str, f64)] = &[
+        (" про", 1.0),
+        ("ост", 1.0),
+        ("ени", 1.0),
+        ("ого", 1.0),
+        ("ать", 1.0),
+        ("ове", 1.0),
+    ];
+    static ES: &[(&str, f64)] = &[
+        (" de", 1.0),
+        ("que", 1.0),
+        ("ción", 1.0),
+        ("los", 1.0),
+        (" por", 1.0),
+        ("las", 1.0),
+    ];
+    static FR: &[(&str, f64)] = &[
+        (" de", 1.0),
+        ("ent", 1.0),
+        ("ion", 1.0),
+        ("que", 1.0),
+        (" les", 1.0),
+        (" pour", 1.0),
+    ];
+    static HI: &[(&str, f64)] = &[
+        (" के", 1.1),
+        ("यह", 1.1),
+        ("में", 1.1),
+        ("और", 1.1),
+        ("है", 1.1),
+        ("से", 1.1),
+    ];
+
+    static PROFILES: &[LanguageProfile] = &[
+        LanguageProfile {
+            iso: "en",
+            trigrams: EN,
+            script_weight: |scores| scores.normalized(scores.latin),
+        },
+        LanguageProfile {
+            iso: "zh",
+            trigrams: ZH,
+            script_weight: |scores| scores.normalized(scores.cjk),
+        },
+        LanguageProfile {
+            iso: "ar",
+            trigrams: AR,
+            script_weight: |scores| scores.normalized(scores.arabic),
+        },
+        LanguageProfile {
+            iso: "ru",
+            trigrams: RU,
+            script_weight: |scores| scores.normalized(scores.cyrillic),
+        },
+        LanguageProfile {
+            iso: "es",
+            trigrams: ES,
+            script_weight: |scores| scores.normalized(scores.latin),
+        },
+        LanguageProfile {
+            iso: "fr",
+            trigrams: FR,
+            script_weight: |scores| scores.normalized(scores.latin),
+        },
+        LanguageProfile {
+            iso: "hi",
+            trigrams: HI,
+            script_weight: |scores| scores.normalized(scores.devanagari),
+        },
+    ];
+    PROFILES
+}
+
+struct ScoreBoard {
+    entries: Vec<(&'static str, f64)>,
+}
+
+impl ScoreBoard {
+    fn best_iso(&self, ascii_ratio: f64) -> &'static str {
+        let mut best_iso = "und";
+        let mut best_score = f64::MIN;
+
+        for (iso, score) in &self.entries {
+            if score > &best_score {
+                best_score = *score;
+                best_iso = *iso;
+            }
+        }
+
+        if best_score <= 0.15 {
+            return if ascii_ratio > 0.9 { "en" } else { "und" };
+        }
+
+        if ascii_ratio > 0.9 {
+            if let Some(english_score) = self
+                .entries
+                .iter()
+                .find(|(iso, _)| *iso == "en")
+                .map(|(_, score)| *score)
+            {
+                if english_score + 0.1 >= best_score {
+                    return "en";
+                }
+            }
+
+            if best_iso != "en" && best_score <= 0.25 {
+                return "en";
+            }
+        }
+
+        best_iso
+    }
+}
+
+fn trigram_scores(text: &str, scripts: &ScriptScores) -> ScoreBoard {
+    let lowered = text.to_lowercase();
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    let chars: Vec<char> = lowered.chars().collect();
+    for window in chars.windows(3) {
+        let trigram: String = window.iter().collect();
+        *counts.entry(trigram).or_insert(0) += 1;
+    }
+
+    let total = counts.values().sum::<usize>().max(1) as f64;
+    let entries: Vec<(&'static str, f64)> = trigram_profiles()
+        .iter()
+        .map(|profile| {
+            let mut score = 0.0f64;
+            for (gram, weight) in profile.trigrams.iter() {
+                if let Some(count) = counts.get(*gram) {
+                    score += (*count as f64 / total) * weight;
+                }
+            }
+            score += (profile.script_weight)(scripts) * 0.8;
+            (profile.iso, score)
+        })
+        .collect();
+
+    ScoreBoard { entries }
+}
+
+fn script_counts(text: &str) -> (usize, usize, usize, usize, usize, usize) {
     let mut latin = 0usize;
     let mut cjk = 0usize;
     let mut arabic = 0usize;
     let mut cyrillic = 0usize;
+    let mut devanagari = 0usize;
     let mut total = 0usize;
     for ch in text.chars() {
         total += 1;
@@ -75,9 +274,11 @@ fn script_counts(text: &str) -> (usize, usize, usize, usize, usize) {
             arabic += 1;
         } else if (0x0400..=0x04FF).contains(&code) || (0x0500..=0x052F).contains(&code) {
             cyrillic += 1;
+        } else if (0x0900..=0x097F).contains(&code) {
+            devanagari += 1;
         }
     }
-    (latin, cjk, arabic, cyrillic, total)
+    (latin, cjk, arabic, cyrillic, devanagari, total)
 }
 
 impl ZiCOperator for ZiCLangDetect {
@@ -137,11 +338,11 @@ impl ZiCOperator for ZiCLangConfidence {
     fn apply(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
         for record in &mut batch {
             if let Some(Value::String(text)) = self.path.ZiFResolve(record) {
-                let (latin, cjk, arabic, cyrillic, total) = script_counts(text);
+                let (latin, cjk, arabic, cyrillic, devanagari, total) = script_counts(text);
                 if total == 0 {
                     continue;
                 }
-                let dominant = latin.max(cjk).max(arabic).max(cyrillic) as f64;
+                let dominant = latin.max(cjk).max(arabic).max(cyrillic).max(devanagari) as f64;
                 let confidence = (dominant / total as f64).clamp(0.0, 1.0);
                 let number = Number::from_f64(confidence).unwrap_or_else(|| Number::from(0));
                 record

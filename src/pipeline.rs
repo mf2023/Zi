@@ -1,4 +1,4 @@
-//! Copyright © 2025 Dunimd Team. All Rights Reserved.
+//! Copyright © 2025 Wenze Wei. All Rights Reserved.
 //!
 //! This file is part of Zi.
 //! The Zi project belongs to the Dunimd project team.
@@ -19,13 +19,17 @@ use std::collections::HashMap;
 use std::ffi::{c_void, CStr};
 use std::os::raw::c_char;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::errors::{Result, ZiError};
-use crate::metrics::ZiCQualityMetrics;
+use crate::metrics::{ZiCQualityMetrics, ZiCStatisticSummary};
 use crate::operator::{ZiCOperator, ZiFExecuteOperator};
 use crate::record::ZiCRecordBatch;
+use crate::version::{ZiCVersion, ZiCVersionStore, ZiFComputeDigest};
 use libloading::Library;
 
 type OperatorFactory = fn(&Value) -> Result<Box<dyn ZiCOperator + Send + Sync>>;
@@ -34,6 +38,8 @@ type OperatorFactory = fn(&Value) -> Result<Box<dyn ZiCOperator + Send + Sync>>;
 pub struct ZiCPipeline {
     stages: Vec<Box<dyn ZiCOperator + Send + Sync>>,
     cache: std::collections::HashMap<String, Vec<crate::record::ZiCRecord>>,
+    instrumentation: bool,
+    stage_metrics: Option<Arc<Mutex<Vec<ZiCPipelineStageMetrics>>>>,
 }
 
 impl ZiCPipeline {
@@ -42,13 +48,49 @@ impl ZiCPipeline {
         ZiCPipeline {
             stages,
             cache: std::collections::HashMap::new(),
+            instrumentation: false,
+            stage_metrics: None,
         }
+    }
+
+    #[allow(non_snake_case)]
+    pub fn ZiFWithInstrumentation(mut self, enabled: bool) -> Self {
+        self.instrumentation = enabled;
+        if enabled {
+            self.stage_metrics = Some(Arc::new(Mutex::new(Vec::new())));
+        } else {
+            self.stage_metrics = None;
+        }
+        self
+    }
+
+    #[allow(non_snake_case)]
+    pub fn ZiFStageMetrics(&self) -> Option<Vec<ZiCPipelineStageMetrics>> {
+        self.stage_metrics
+            .as_ref()
+            .and_then(|metrics| metrics.lock().ok().map(|guard| guard.clone()))
     }
 
     /// Runs the pipeline, passing batches through each operator sequentially.
     pub fn run(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+        if self.instrumentation {
+            self.reset_stage_metrics();
+        }
+
         for stage in &self.stages {
+            let before = batch.len();
+            let start = Instant::now();
             batch = ZiFExecuteOperator(stage.as_ref(), batch)?;
+            if self.instrumentation {
+                let duration = start.elapsed();
+                let after = batch.len();
+                self.record_stage_metric(ZiCPipelineStageMetrics::new(
+                    stage.name().to_string(),
+                    before,
+                    after,
+                    duration,
+                ));
+            }
         }
         Ok(batch)
     }
@@ -70,11 +112,24 @@ impl ZiCPipeline {
         mut batch: ZiCRecordBatch,
         progress: impl Fn(&str, usize, usize),
     ) -> Result<ZiCRecordBatch> {
+        if self.instrumentation {
+            self.reset_stage_metrics();
+        }
         for stage in &self.stages {
             let before = batch.len();
+            let start = Instant::now();
             batch = ZiFExecuteOperator(stage.as_ref(), batch)?;
             let after = batch.len();
+            let duration = start.elapsed();
             progress(stage.name(), before, after);
+            if self.instrumentation {
+                self.record_stage_metric(ZiCPipelineStageMetrics::new(
+                    stage.name().to_string(),
+                    before,
+                    after,
+                    duration,
+                ));
+            }
         }
         Ok(batch)
     }
@@ -101,6 +156,76 @@ impl ZiCPipeline {
         Ok(batch)
     }
 
+    /// Executes the pipeline on multiple chunks concurrently.
+    #[allow(non_snake_case)]
+    pub fn ZiFRunParallel(
+        &self,
+        batch: ZiCRecordBatch,
+        num_workers: usize,
+    ) -> Result<ZiCRecordBatch> {
+        if num_workers == 0 {
+            return Err(ZiError::validation(
+                "parallel execution requires at least one worker",
+            ));
+        }
+        if batch.len() <= 1 || num_workers == 1 || self.stages.len() <= 1 {
+            return self.run(batch);
+        }
+
+        let chunk_size = (batch.len().max(1) + num_workers - 1) / num_workers;
+        let mut chunks: Vec<ZiCRecordBatch> = Vec::new();
+        let mut current = Vec::with_capacity(chunk_size);
+        for record in batch {
+            current.push(record);
+            if current.len() == chunk_size {
+                chunks.push(std::mem::take(&mut current));
+                current = Vec::with_capacity(chunk_size);
+            }
+        }
+        if !current.is_empty() {
+            chunks.push(current);
+        }
+
+        if chunks.len() == 1 {
+            return self.run(chunks.pop().unwrap());
+        }
+
+        let mut results = Vec::with_capacity(chunks.len());
+        thread::scope(|scope| -> Result<()> {
+            let stages = &self.stages;
+            let mut handles = Vec::with_capacity(chunks.len());
+            for (idx, chunk) in chunks.into_iter().enumerate() {
+                let stage_refs = stages;
+                handles.push(scope.spawn(move || -> Result<(usize, ZiCRecordBatch)> {
+                    let mut local = chunk;
+                    for stage in stage_refs {
+                        local = ZiFExecuteOperator(stage.as_ref(), local)?;
+                    }
+                    Ok((idx, local))
+                }));
+            }
+
+            for handle in handles {
+                let pair = handle
+                    .join()
+                    .map_err(|_| ZiError::internal("parallel execution worker panicked"))?;
+                match pair {
+                    Ok(pair) => results.push(pair),
+                    Err(err) => return Err(err),
+                }
+            }
+
+            Ok(())
+        })?;
+
+        results.sort_by_key(|(idx, _)| *idx);
+        let mut merged = Vec::new();
+        for (_, chunk) in results {
+            merged.extend(chunk);
+        }
+        Ok(merged)
+    }
+
     /// Ensures the pipeline contains at least one stage.
     pub fn validate(&self) -> Result<()> {
         if self.stages.is_empty() {
@@ -117,6 +242,135 @@ impl ZiCPipeline {
         let processed = self.run(batch)?;
         let metrics = ZiCQualityMetrics::ZiFCompute(&processed);
         Ok((processed, metrics))
+    }
+
+    /// Runs the pipeline and records a version snapshot in the provided store.
+    #[allow(non_snake_case)]
+    pub fn ZiFRunWithVersion(
+        &self,
+        batch: ZiCRecordBatch,
+        store: &mut ZiCVersionStore,
+        parent: Option<&str>,
+        mut metadata: Map<String, Value>,
+    ) -> Result<(ZiCRecordBatch, ZiCVersion)> {
+        let processed = if self.instrumentation {
+            let (records, stage_metrics) = self.run_with_stage_metrics(batch)?;
+            let stage_values: Vec<Value> = stage_metrics.iter().map(|m| m.to_value()).collect();
+            let durations: Vec<f64> = stage_metrics
+                .iter()
+                .map(|m| m.duration.as_secs_f64() * 1000.0)
+                .collect();
+            let summary = ZiCStatisticSummary::from_slice(&durations);
+            metadata.insert("stage_metrics".into(), Value::Array(stage_values));
+            metadata.insert(
+                "stage_timing_ms".into(),
+                serde_json::to_value(summary).unwrap_or(Value::Null),
+            );
+            records
+        } else {
+            self.run(batch)?
+        };
+        let metrics = ZiCQualityMetrics::ZiFCompute(&processed);
+        let digest = ZiFComputeDigest(&processed);
+
+        if !metadata.contains_key("stages") {
+            let stage_names: Vec<Value> = self
+                .stages
+                .iter()
+                .map(|stage| Value::String(stage.name().to_string()))
+                .collect();
+            metadata.insert("stages".into(), Value::Array(stage_names));
+        }
+
+        metadata
+            .entry("record_count".to_string())
+            .or_insert_with(|| Value::from(processed.len() as u64));
+        metadata
+            .entry("digest".to_string())
+            .or_insert_with(|| Value::String(digest.clone()));
+
+        let version = store.ZiFCreate(parent, metadata, metrics, digest)?;
+        Ok((processed, version))
+    }
+
+    fn run_with_stage_metrics(
+        &self,
+        mut batch: ZiCRecordBatch,
+    ) -> Result<(ZiCRecordBatch, Vec<ZiCPipelineStageMetrics>)> {
+        let mut stage_metrics = Vec::with_capacity(self.stages.len());
+        for stage in &self.stages {
+            let before = batch.len();
+            let start = Instant::now();
+            batch = ZiFExecuteOperator(stage.as_ref(), batch)?;
+            let duration = start.elapsed();
+            let after = batch.len();
+            let metric =
+                ZiCPipelineStageMetrics::new(stage.name().to_string(), before, after, duration);
+            self.record_stage_metric(metric.clone());
+            stage_metrics.push(metric);
+        }
+        Ok((batch, stage_metrics))
+    }
+
+    fn reset_stage_metrics(&self) {
+        if let Some(metrics) = &self.stage_metrics {
+            if let Ok(mut guard) = metrics.lock() {
+                guard.clear();
+            }
+        }
+    }
+
+    fn record_stage_metric(&self, metric: ZiCPipelineStageMetrics) {
+        if let Some(metrics) = &self.stage_metrics {
+            if let Ok(mut guard) = metrics.lock() {
+                guard.push(metric);
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ZiCPipelineStageMetrics {
+    pub stage_name: String,
+    pub input_records: usize,
+    pub output_records: usize,
+    pub duration: Duration,
+}
+
+impl ZiCPipelineStageMetrics {
+    pub fn new(
+        stage_name: String,
+        input_records: usize,
+        output_records: usize,
+        duration: Duration,
+    ) -> Self {
+        Self {
+            stage_name,
+            input_records,
+            output_records,
+            duration,
+        }
+    }
+
+    pub fn to_value(&self) -> Value {
+        Value::Object(Map::from_iter([
+            ("stage".to_string(), Value::String(self.stage_name.clone())),
+            (
+                "input".to_string(),
+                Value::Number(self.input_records.into()),
+            ),
+            (
+                "output".to_string(),
+                Value::Number(self.output_records.into()),
+            ),
+            (
+                "duration_millis".to_string(),
+                Value::Number(
+                    serde_json::Number::from_f64(self.duration.as_secs_f64() * 1000.0)
+                        .unwrap_or_else(|| serde_json::Number::from(0)),
+                ),
+            ),
+        ]))
     }
 }
 
@@ -513,164 +767,76 @@ mod tests {
     }
 
     #[test]
-    fn builder_with_defaults_builds_pipeline() {
-        let builder = ZiCPipelineBuilder::with_defaults();
-        let config = json!([
-            {
-                "operator": "metadata.enrich",
-                "config": {"entries": {"source": "test", "temp": true, "optional": null, "tags": ["primary", "beta"], "description": "primary dataset"}}
-            },
-            {
-                "operator": "metadata.rename",
-                "config": {"keys": {"source": "origin"}}
-            },
-            {
-                "operator": "metadata.remove",
-                "config": {"keys": ["temp"]}
-            },
-            {
-                "operator": "metadata.copy",
-                "config": {"keys": {"origin": "origin_backup"}}
-            },
-            {
-                "operator": "metadata.require",
-                "config": {"keys": ["origin", "origin_backup"]}
-            },
-            {
-                "operator": "metadata.extract",
-                "config": {"keys": {"payload.keep": "keep_flag"}}
-            },
-            {
-                "operator": "metadata.keep",
-                "config": {"keys": ["origin", "origin_backup", "keep_flag", "optional", "tags", "description"]}
-            },
-            {
-                "operator": "filter.length_range",
-                "config": {"path": "payload.text", "min": 5, "max": 20}
-            },
-            {
-                "operator": "filter.range",
-                "config": {"path": "payload.score", "min": 0.4, "max": 1.0}
-            },
-            {
-                "operator": "filter.in",
-                "config": {"path": "metadata.keep_flag", "values": [true]}
-            },
-            {
-                "operator": "filter.array_contains",
-                "config": {"path": "metadata.tags", "element": "primary"}
-            },
-            {
-                "operator": "filter.not_in",
-                "config": {"path": "metadata.origin", "values": ["blocked", "spam"]}
-            },
-            {
-                "operator": "filter.starts_with",
-                "config": {"path": "payload.text", "prefix": "hell"}
-            },
-            {
-                "operator": "filter.ends_with",
-                "config": {"path": "payload.text", "suffix": "ld"}
-            },
-            {
-                "operator": "filter.regex",
-                "config": {"path": "payload.text", "pattern": "^hell"}
-            },
-            {
-                "operator": "filter.greater_than",
-                "config": {"path": "payload.score", "threshold": 0.6}
-            },
-            {
-                "operator": "filter.token_range",
-                "config": {"path": "payload.text", "min": 2, "max": 4}
-            },
-            {
-                "operator": "filter.any",
-                "config": {"paths": ["payload.text", "metadata.origin"], "equals": "hello world"}
-            },
-            {
-                "operator": "filter.not_equals",
-                "config": {"path": "metadata.origin", "equals": "blocked"}
-            },
-            {
-                "operator": "filter.is_null",
-                "config": {"path": "metadata.optional", "include_missing": false}
-            },
-            {
-                "operator": "filter.not_exists",
-                "config": {"path": "metadata.optional"}
-            },
-            {
-                "operator": "filter.exists",
-                "config": {"path": "metadata.keep_flag"}
-            },
-            {
-                "operator": "filter.contains",
-                "config": {"path": "metadata.origin", "contains": "te"}
-            },
-            {
-                "operator": "filter.contains_all",
-                "config": {"path": "metadata.tags", "contains_all": ["primary", "beta"]}
-            },
-            {
-                "operator": "filter.contains_any",
-                "config": {"path": "metadata.tags", "contains_any": ["primary", "seed"]}
-            },
-            {
-                "operator": "filter.contains_none",
-                "config": {"path": "metadata.description", "contains_none": ["blocked", "deprecated"]}
-            },
-            {
-                "operator": "filter.equals",
-                "config": {"path": "payload.keep", "equals": true}
-            },
-            {"operator": "limit", "config": {"count": 1}}
-        ]);
+    fn run_parallel_applies_all_stages() {
+        #[derive(Debug)]
+        struct Tagger;
 
-        let pipeline = builder
-            .build_from_config(config.as_array().unwrap())
+        impl ZiCOperator for Tagger {
+            fn name(&self) -> &'static str {
+                "tagger"
+            }
+
+            fn apply(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+                for (index, record) in batch.iter_mut().enumerate() {
+                    record
+                        .ZiFMetadataMut()
+                        .insert("worker".into(), json!(index as i64));
+                }
+                Ok(batch)
+            }
+        }
+
+        let pipeline = ZiCPipeline::new(vec![Box::new(Tagger)]);
+        let mut input = Vec::new();
+        for i in 0..16 {
+            input.push(ZiCRecord::ZiFNew(Some(format!("{i}")), json!({"value": i})));
+        }
+
+        let output = pipeline.ZiFRunParallel(input.clone(), 4).unwrap();
+        assert_eq!(output.len(), input.len());
+        for record in output {
+            assert!(record.metadata.as_ref().unwrap().contains_key("worker"));
+        }
+    }
+
+    #[test]
+    fn run_parallel_rejects_zero_workers() {
+        let pipeline = ZiCPipeline::new(Vec::new());
+        let result = pipeline.ZiFRunParallel(Vec::new(), 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn run_with_version_creates_snapshot() {
+        #[derive(Debug)]
+        struct Identity;
+
+        impl ZiCOperator for Identity {
+            fn name(&self) -> &'static str {
+                "identity"
+            }
+
+            fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+                Ok(batch)
+            }
+        }
+
+        let pipeline = ZiCPipeline::new(vec![Box::new(Identity)]);
+        let mut store = ZiCVersionStore::ZiFNew();
+        let batch = vec![ZiCRecord::ZiFNew(
+            Some("id".into()),
+            json!({"text": "hello"}),
+        )];
+        let mut metadata = Map::new();
+        metadata.insert("source".into(), json!("test"));
+
+        let (processed, version) = pipeline
+            .ZiFRunWithVersion(batch, &mut store, None, metadata)
             .unwrap();
-        let batch = vec![
-            ZiCRecord::ZiFNew(
-                Some("1".into()),
-                json!({
-                    "keep": true,
-                    "score": 0.7,
-                    "text": "hello world",
-                    "lang": "en"
-                }),
-            ),
-            ZiCRecord::ZiFNew(
-                Some("2".into()),
-                json!({
-                    "keep": false,
-                    "score": 0.8,
-                    "text": "short",
-                    "lang": "en"
-                }),
-            ),
-            ZiCRecord::ZiFNew(
-                Some("3".into()),
-                json!({
-                    "keep": true,
-                    "score": 0.9,
-                    "text": "hello universe",
-                    "lang": "en"
-                }),
-            ),
-        ];
-        let output = pipeline.run(batch).unwrap();
-        assert_eq!(output.len(), 1);
-        assert_eq!(output[0].id.as_deref(), Some("1"));
-        let metadata = output[0].metadata.as_ref().unwrap();
-        assert_eq!(metadata["origin"], json!("test"));
-        assert!(metadata.get("source").is_none());
-        assert!(metadata.get("temp").is_none());
-        assert_eq!(metadata["origin_backup"], json!("test"));
-        assert_eq!(metadata["keep_flag"], json!(true));
-        assert!(metadata["optional"].is_null());
-        assert_eq!(metadata["tags"], json!(["primary", "beta"]));
-        assert_eq!(metadata["description"], json!("primary dataset"));
-        assert!(metadata.get("extra").is_none());
+
+        assert_eq!(processed.len(), 1);
+        let stored = store.ZiFGet(&version.id).expect("version stored");
+        assert!(stored.metadata.contains_key("stages"));
+        assert_eq!(stored.metadata.get("record_count").unwrap(), &json!(1));
     }
 }

@@ -1,4 +1,4 @@
-//! Copyright © 2025 Dunimd Team. All Rights Reserved.
+//! Copyright © 2025 Wenze Wei. All Rights Reserved.
 //!
 //! This file is part of Zi.
 //! The Zi project belongs to the Dunimd project team.
@@ -15,6 +15,7 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+#[cfg(test)]
 use serde_json::json;
 
 #[test]

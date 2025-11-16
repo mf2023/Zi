@@ -1,4 +1,4 @@
-//! Copyright © 2025 Dunimd Team. All Rights Reserved.
+//! Copyright © 2025 Wenze Wei. All Rights Reserved.
 //!
 //! This file is part of Zi.
 //! The Zi project belongs to the Dunimd project team.
@@ -57,6 +57,24 @@ impl Default for ZiCCsvOptions {
         ZiCCsvOptions {
             delimiter: b',',
             has_headers: true,
+        }
+    }
+}
+
+/// Configuration flags for JSONL ingestion.
+#[derive(Clone, Debug)]
+pub struct ZiCJsonlOptions {
+    pub allow_comments: bool,
+    pub skip_invalid_lines: bool,
+    pub max_records: Option<usize>,
+}
+
+impl Default for ZiCJsonlOptions {
+    fn default() -> Self {
+        ZiCJsonlOptions {
+            allow_comments: false,
+            skip_invalid_lines: false,
+            max_records: None,
         }
     }
 }
@@ -125,22 +143,71 @@ impl ZiCIO {
     /// or an object containing `id`, `payload`, and optional `metadata` fields.
     #[allow(non_snake_case)]
     pub fn ZiFLoadJsonl(path: impl AsRef<Path>) -> Result<ZiCRecordBatch> {
+        Self::ZiFLoadJsonlWithOptions(path, ZiCJsonlOptions::default())
+    }
+
+    #[allow(non_snake_case)]
+    pub fn ZiFLoadJsonlWithOptions(
+        path: impl AsRef<Path>,
+        options: ZiCJsonlOptions,
+    ) -> Result<ZiCRecordBatch> {
         let file = File::open(path)?;
-        Self::ZiFLoadJsonlReader(BufReader::new(file))
+        Self::ZiFLoadJsonlReaderWithOptions(BufReader::new(file), options)
     }
 
     /// Loads records from any buffered reader that yields JSONL content.
     #[allow(non_snake_case)]
     pub fn ZiFLoadJsonlReader<R: BufRead>(reader: R) -> Result<ZiCRecordBatch> {
-        reader
-            .lines()
-            .enumerate()
-            .filter_map(|(idx, line)| match line {
-                Ok(content) if content.trim().is_empty() => None,
-                Ok(content) => Some(_parse_record(content, idx + 1)),
-                Err(err) => Some(Err(err.into())),
-            })
-            .collect()
+        Self::ZiFLoadJsonlReaderWithOptions(reader, ZiCJsonlOptions::default())
+    }
+
+    #[allow(non_snake_case)]
+    pub fn ZiFLoadJsonlReaderWithOptions<R: BufRead>(
+        reader: R,
+        options: ZiCJsonlOptions,
+    ) -> Result<ZiCRecordBatch> {
+        let mut records = Vec::new();
+        for (idx, line) in reader.lines().enumerate() {
+            let line = line?;
+            let trimmed = line.trim();
+
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            if options.allow_comments
+                && (trimmed.starts_with('#')
+                    || trimmed.starts_with("//")
+                    || trimmed.starts_with("--"))
+            {
+                continue;
+            }
+
+            match _parse_record(line, idx + 1) {
+                Ok(record) => {
+                    records.push(record);
+                    if let Some(limit) = options.max_records {
+                        if records.len() >= limit {
+                            break;
+                        }
+                    }
+                }
+                Err(err) => {
+                    if options.skip_invalid_lines {
+                        log::warn!(
+                            "skipping invalid jsonl line {} due to error: {}",
+                            idx + 1,
+                            err
+                        );
+                        continue;
+                    } else {
+                        return Err(err);
+                    }
+                }
+            }
+        }
+
+        Ok(records)
     }
 
     /// Writes records to a JSONL file, storing payload, id, and metadata fields.
@@ -545,6 +612,22 @@ mod tests {
     }
 
     #[test]
+    fn jsonl_options_enable_comment_and_error_skipping() {
+        let data = "# heading\n// comment\n{\"payload\": {\"text\": \"keep\"}}\n{\"id\": 1, \"payload\": {}}\ninvalid json\n{\"payload\": {\"text\": \"second\"}}\n";
+        let cursor = std::io::Cursor::new(data.as_bytes());
+        let options = ZiCJsonlOptions {
+            allow_comments: true,
+            skip_invalid_lines: true,
+            max_records: Some(1),
+        };
+
+        let records =
+            ZiCIO::ZiFLoadJsonlReaderWithOptions(BufReader::new(cursor), options).unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].payload["text"], json!("keep"));
+    }
+
+    #[test]
     fn csv_roundtrip() {
         let records = vec![
             ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "hi"})).ZiFWithMetadata({
@@ -563,7 +646,8 @@ mod tests {
         )
         .unwrap();
 
-        let loaded = ZiCIO::ZiFLoad(tmp.path(), ZiCIOFormat::Csv(ZiCCsvOptions::default())).unwrap();
+        let loaded =
+            ZiCIO::ZiFLoad(tmp.path(), ZiCIOFormat::Csv(ZiCCsvOptions::default())).unwrap();
         assert_eq!(loaded.len(), 2);
         assert_eq!(loaded[0].id.as_deref(), Some("1"));
         assert_eq!(loaded[0].metadata.as_ref().unwrap()["score"], json!(0.9));

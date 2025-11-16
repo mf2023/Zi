@@ -1,4 +1,4 @@
-//! Copyright © 2025 Dunimd Team. All Rights Reserved.
+//! Copyright © 2025 Wenze Wei. All Rights Reserved.
 //!
 //! This file is part of Zi.
 //! The Zi project belongs to the Dunimd project team.
@@ -56,7 +56,7 @@ fn pipeline_filters_enriches_and_limits_jsonl() {
         },
         {
             "operator": "metadata.extract",
-            "config": {"keys": {"payload.lang": "lang"}}
+            "config": {"keys": {"payload.lang": {"name": "lang"}}}
         },
         {
             "operator": "metadata.keep",

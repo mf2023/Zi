@@ -1,4 +1,4 @@
-//! Copyright © 2025 Dunimd Team. All Rights Reserved.
+//! Copyright © 2025 Wenze Wei. All Rights Reserved.
 //!
 //! This file is part of Zi.
 //! The Zi project belongs to the Dunimd project team.
@@ -15,51 +15,123 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use regex::Regex;
-use serde_json::Value;
+use std::collections::{hash_map::DefaultHasher, HashSet};
+use std::hash::{Hash, Hasher};
+
+use regex::{Captures, Regex};
+use serde_json::{Map, Value};
 
 use crate::errors::{Result, ZiError};
 use crate::operator::ZiCOperator;
 use crate::operators::filter::ZiCFieldPath;
 use crate::record::ZiCRecordBatch;
 
+#[derive(Debug, Clone)]
+pub struct ZiCPiiRule {
+    tag: String,
+    pattern: Regex,
+    strategy: ZiCPiiStrategy,
+    context_window: usize,
+    store_original: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum ZiCPiiStrategy {
+    Placeholder(String),
+    Mask {
+        mask_char: char,
+        prefix: usize,
+        suffix: usize,
+    },
+    Hash {
+        salt: u64,
+        prefix: usize,
+        suffix: usize,
+    },
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ZiCPiiMatch {
+    pub tag: String,
+    pub original: Option<String>,
+    pub redacted: String,
+    pub strategy: String,
+    pub context: Option<String>,
+}
+
 #[derive(Debug)]
 pub struct ZiCPiiRedact {
     path: ZiCFieldPath,
-    rules: Vec<(Regex, String)>,
+    rules: Vec<ZiCPiiRule>,
     store_map_key: Option<String>,
+    allowlist: HashSet<String>,
 }
 
 impl ZiCPiiRedact {
     #[allow(non_snake_case)]
     pub fn ZiFNew(
         path: ZiCFieldPath,
-        rules: Vec<(Regex, String)>,
+        rules: Vec<ZiCPiiRule>,
         store_map_key: Option<String>,
+        allowlist: HashSet<String>,
     ) -> Self {
         Self {
             path,
             rules,
             store_map_key,
+            allowlist,
         }
     }
 
-    fn redact_text(&self, text: &str) -> (String, Vec<(String, String)>) {
-        let mut out = text.to_string();
-        let mut mappings = Vec::new();
-        for (re, placeholder) in &self.rules {
-            let mut caps = re
-                .captures_iter(&out)
-                .map(|c| c.get(0).map(|m| m.as_str().to_string()))
-                .flatten()
-                .collect::<Vec<_>>();
-            caps.dedup();
-            for m in caps {
-                mappings.push((m.clone(), placeholder.clone()));
-                out = out.replace(&m, placeholder);
+    fn redact_text(&self, text: &str) -> (String, Vec<ZiCPiiMatch>) {
+        let mut output = text.to_string();
+        let mut matches = Vec::new();
+        for rule in &self.rules {
+            let mut replacements = Vec::new();
+            for caps in rule.pattern.captures_iter(&output) {
+                if let Some(full) = caps.get(0) {
+                    let original = full.as_str();
+                    let normalized = original.trim().to_ascii_lowercase();
+                    if self.allowlist.contains(&normalized)
+                        || normalized
+                            .split_whitespace()
+                            .any(|token| self.allowlist.contains(token))
+                    {
+                        continue;
+                    }
+                    let redacted = match &rule.strategy {
+                        ZiCPiiStrategy::Placeholder(token) => token.clone(),
+                        ZiCPiiStrategy::Mask {
+                            mask_char,
+                            prefix,
+                            suffix,
+                        } => _mask_value(original, *mask_char, *prefix, *suffix),
+                        ZiCPiiStrategy::Hash {
+                            salt,
+                            prefix,
+                            suffix,
+                        } => _hash_value(original, *salt, *prefix, *suffix),
+                    };
+                    let context = if rule.context_window > 0 {
+                        Some(_extract_window(&caps, text, rule.context_window))
+                    } else {
+                        None
+                    };
+                    matches.push(ZiCPiiMatch {
+                        tag: rule.tag.clone(),
+                        original: rule.store_original.then(|| original.to_string()),
+                        redacted: redacted.clone(),
+                        strategy: _strategy_name(&rule.strategy),
+                        context,
+                    });
+                    replacements.push((original.to_string(), redacted));
+                }
+            }
+            for (from, to) in replacements {
+                output = output.replace(&from, &to);
             }
         }
-        (out, mappings)
+        (output, matches)
     }
 }
 
@@ -70,23 +142,40 @@ impl ZiCOperator for ZiCPiiRedact {
 
     fn apply(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
         for record in &mut batch {
-            if let Some(Value::String(text)) = self.path.ZiFResolve(record) {
-                let (redacted, map) = self.redact_text(text);
-                let _ = self
-                    .path
-                    .ZiFSetValue(record, Value::String(redacted.clone()));
-                if let Some(key) = &self.store_map_key {
-                    let value = Value::Array(
-                        map.into_iter()
-                            .map(|(from, to)| {
-                                let mut obj = serde_json::Map::new();
-                                obj.insert("from".into(), Value::String(from));
-                                obj.insert("to".into(), Value::String(to));
-                                Value::Object(obj)
-                            })
-                            .collect(),
-                    );
-                    record.ZiFMetadataMut().insert(key.clone(), value);
+            let Some(Value::String(text)) = self.path.ZiFResolve(record) else {
+                continue;
+            };
+            let (redacted, matches) = self.redact_text(text);
+            let _ = self
+                .path
+                .ZiFSetValue(record, Value::String(redacted.clone()));
+            if let Some(key) = &self.store_map_key {
+                if !matches.is_empty() {
+                    let entries: Vec<Value> = matches
+                        .iter()
+                        .map(|m| {
+                            let mut obj = Map::new();
+                            obj.insert("tag".into(), Value::String(m.tag.clone()));
+                            obj.insert("redacted".into(), Value::String(m.redacted.clone()));
+                            obj.insert("strategy".into(), Value::String(m.strategy.clone()));
+                            if let Some(context) = &m.context {
+                                obj.insert("context".into(), Value::String(context.clone()));
+                            }
+                            if let Some(original) = &m.original {
+                                obj.insert("original".into(), Value::String(original.clone()));
+                            }
+                            Value::Object(obj)
+                        })
+                        .collect();
+                    let metadata = record.ZiFMetadataMut();
+                    let target = metadata
+                        .entry(key.clone())
+                        .or_insert_with(|| Value::Array(Vec::new()));
+                    if let Some(array) = target.as_array_mut() {
+                        array.extend(entries);
+                    } else {
+                        *target = Value::Array(entries);
+                    }
                 }
             }
         }
@@ -106,41 +195,232 @@ pub fn ZiFPiiRedactFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send 
     let store_key = obj
         .get("store_key")
         .and_then(Value::as_str)
-        .map(|s| s.to_string());
-    // default rules
-    let mut rules: Vec<(Regex, String)> = vec![
-        (
-            Regex::new(r"(?i)[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}").unwrap(),
-            "<EMAIL>".into(),
-        ),
-        (
-            Regex::new(r"(?i)\b(?:\+?\d{1,3}[ -]?)?(?:\(?\d{2,4}\)?[ -]?)?\d{7,12}\b").unwrap(),
-            "<PHONE>".into(),
-        ),
-        (
-            Regex::new(r"(?i)\b(?:\d[ -]?){13,19}\b").unwrap(),
-            "<CARD>".into(),
-        ),
-        (
-            Regex::new(r"(?i)https?://[\w.-/?#%=&]+").unwrap(),
-            "<URL>".into(),
-        ),
-    ];
-    // additional custom regexes
+        .map(str::to_string);
+    let mut rules = _default_rules();
     if let Some(arr) = obj.get("custom").and_then(Value::as_array) {
-        for v in arr {
-            if let (Some(pat), Some(tag)) = (
-                v.get("pattern").and_then(Value::as_str),
-                v.get("tag").and_then(Value::as_str),
-            ) {
-                let re = Regex::new(pat)
-                    .map_err(|e| ZiError::validation(format!("invalid pii pattern: {e}")))?;
-                rules.push((re, format!("<{}>", tag.to_uppercase())));
+        for entry in arr {
+            rules.push(_parse_rule(entry)?);
+        }
+    }
+    let allowlist = obj
+        .get("allowlist")
+        .and_then(Value::as_array)
+        .map(|arr| _parse_allowlist(arr))
+        .unwrap_or_default();
+    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    Ok(Box::new(ZiCPiiRedact::ZiFNew(
+        field_path, rules, store_key, allowlist,
+    )))
+}
+
+fn _mask_value(input: &str, mask_char: char, prefix: usize, suffix: usize) -> String {
+    if input.len() <= prefix + suffix {
+        return mask_char.to_string().repeat(input.len());
+    }
+    let mut out = String::with_capacity(input.len());
+    out.push_str(&input[..prefix.min(input.len())]);
+    let mask_len = input.len().saturating_sub(prefix + suffix).min(4).max(1);
+    out.push_str(&mask_char.to_string().repeat(mask_len));
+    if suffix > 0 {
+        out.push_str(&input[input.len() - suffix..]);
+    }
+    out
+}
+
+fn _hash_value(input: &str, salt: u64, prefix: usize, suffix: usize) -> String {
+    let mut hasher = DefaultHasher::new();
+    salt.hash(&mut hasher);
+    input.hash(&mut hasher);
+    let digest = format!("{:016x}", hasher.finish());
+    let prefix_len = prefix.min(input.len());
+    let suffix_len = suffix.min(input.len().saturating_sub(prefix_len));
+    let prefix_part = &input[..prefix_len];
+    let suffix_part = &input[input.len().saturating_sub(suffix_len)..];
+    let middle_start = prefix_len;
+    let middle_end = input.len().saturating_sub(suffix_len);
+    let middle = if middle_end > middle_start {
+        &input[middle_start..middle_end]
+    } else {
+        ""
+    };
+
+    let middle_chars: Vec<char> = middle.chars().collect();
+    let mut preserved_prefix = String::new();
+    let mut preserved_suffix = String::new();
+
+    let mut start = 0usize;
+    let mut end = middle_chars.len();
+
+    while start < end && !middle_chars[start].is_alphanumeric() {
+        preserved_prefix.push(middle_chars[start]);
+        start += 1;
+    }
+
+    while end > start && !middle_chars[end - 1].is_alphanumeric() {
+        preserved_suffix.insert(0, middle_chars[end - 1]);
+        end -= 1;
+    }
+
+    let mut out = String::with_capacity(
+        prefix_len
+            + suffix_len
+            + digest.len()
+            + 2
+            + preserved_prefix.len()
+            + preserved_suffix.len(),
+    );
+    out.push_str(prefix_part);
+    out.push_str(&preserved_prefix);
+    out.push('<');
+    out.push_str(&digest);
+    out.push('>');
+    out.push_str(&preserved_suffix);
+    out.push_str(suffix_part);
+    out
+}
+
+fn _extract_window(capture: &Captures, text: &str, window: usize) -> String {
+    if let Some(mat) = capture.get(0) {
+        let start = mat.start().saturating_sub(window);
+        let end = (mat.end() + window).min(text.len());
+        text[start..end].to_string()
+    } else {
+        String::new()
+    }
+}
+
+fn _strategy_name(strategy: &ZiCPiiStrategy) -> String {
+    match strategy {
+        ZiCPiiStrategy::Placeholder(_) => "placeholder".into(),
+        ZiCPiiStrategy::Mask { .. } => "mask".into(),
+        ZiCPiiStrategy::Hash { .. } => "hash".into(),
+    }
+}
+
+fn _default_rules() -> Vec<ZiCPiiRule> {
+    vec![
+        ZiCPiiRule {
+            tag: "email".into(),
+            pattern: Regex::new(r"(?i)[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}").unwrap(),
+            strategy: ZiCPiiStrategy::Placeholder("<EMAIL>".into()),
+            context_window: 12,
+            store_original: true,
+        },
+        ZiCPiiRule {
+            tag: "phone".into(),
+            pattern: Regex::new(r"(?i)\b(?:\+?\d{1,3}[ -]?)?(?:\(?\d{2,4}\)?[ -]?)?\d{7,12}\b")
+                .unwrap(),
+            strategy: ZiCPiiStrategy::Mask {
+                mask_char: '*',
+                prefix: 2,
+                suffix: 2,
+            },
+            context_window: 6,
+            store_original: false,
+        },
+        ZiCPiiRule {
+            tag: "card".into(),
+            pattern: Regex::new(r"(?i)\b(?:\d[ -]?){13,19}\b").unwrap(),
+            strategy: ZiCPiiStrategy::Mask {
+                mask_char: '#',
+                prefix: 4,
+                suffix: 2,
+            },
+            context_window: 4,
+            store_original: false,
+        },
+        ZiCPiiRule {
+            tag: "url".into(),
+            pattern: Regex::new(r"(?i)https?://[\w.-/?#%=&]+").unwrap(),
+            strategy: ZiCPiiStrategy::Placeholder("<URL>".into()),
+            context_window: 16,
+            store_original: false,
+        },
+    ]
+}
+
+fn _parse_rule(value: &Value) -> Result<ZiCPiiRule> {
+    let obj = value
+        .as_object()
+        .ok_or_else(|| ZiError::validation("pii rule must be object"))?;
+    let tag = obj
+        .get("tag")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ZiError::validation("pii rule requires 'tag'"))?
+        .to_string();
+    let pattern = obj
+        .get("pattern")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ZiError::validation("pii rule requires 'pattern'"))?;
+    let strategy = obj
+        .get("strategy")
+        .and_then(Value::as_str)
+        .unwrap_or("placeholder");
+    let placeholder = obj.get("placeholder").and_then(Value::as_str);
+    let mask_char = obj
+        .get("mask_char")
+        .and_then(Value::as_str)
+        .and_then(|s| s.chars().next())
+        .unwrap_or('*');
+    let prefix = obj.get("prefix").and_then(Value::as_u64).unwrap_or(0) as usize;
+    let suffix = obj.get("suffix").and_then(Value::as_u64).unwrap_or(0) as usize;
+    let salt = obj.get("salt").and_then(Value::as_u64).unwrap_or(0);
+    let context_window = obj
+        .get("context_window")
+        .and_then(Value::as_u64)
+        .unwrap_or(0) as usize;
+    let store_original = obj
+        .get("store_original")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let regex = Regex::new(pattern)
+        .map_err(|err| ZiError::validation(format!("invalid pii pattern '{pattern}': {err}")))?;
+    let strategy = match strategy {
+        "placeholder" => ZiCPiiStrategy::Placeholder(
+            placeholder
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("<{}>", tag.to_ascii_uppercase())),
+        ),
+        "mask" => ZiCPiiStrategy::Mask {
+            mask_char,
+            prefix,
+            suffix,
+        },
+        "hash" => ZiCPiiStrategy::Hash {
+            salt,
+            prefix,
+            suffix,
+        },
+        other => {
+            return Err(ZiError::validation(format!(
+                "unknown pii strategy '{other}', expected placeholder|mask|hash"
+            )))
+        }
+    };
+    Ok(ZiCPiiRule {
+        tag,
+        pattern: regex,
+        strategy,
+        context_window,
+        store_original,
+    })
+}
+
+fn _parse_allowlist(values: &[Value]) -> HashSet<String> {
+    let mut allowlist = HashSet::new();
+    for value in values {
+        if let Some(raw) = value.as_str() {
+            let normalized = raw.trim().to_ascii_lowercase();
+            if normalized.is_empty() {
+                continue;
+            }
+            allowlist.insert(normalized.clone());
+            for token in normalized.split_whitespace() {
+                allowlist.insert(token.to_string());
             }
         }
     }
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
-    Ok(Box::new(ZiCPiiRedact::ZiFNew(field_path, rules, store_key)))
+    allowlist
 }
 
 #[cfg(test)]
@@ -150,17 +430,31 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn redact_email_and_phone() {
+    fn placeholder_and_mask_rules() {
         let op = ZiCPiiRedact::ZiFNew(
             ZiCFieldPath::ZiFParse("payload.text").unwrap(),
             vec![
-                (
-                    Regex::new(r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}").unwrap(),
-                    "<EMAIL>".into(),
-                ),
-                (Regex::new(r"\b\d{11}\b").unwrap(), "<PHONE>".into()),
+                ZiCPiiRule {
+                    tag: "email".into(),
+                    pattern: Regex::new(r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}").unwrap(),
+                    strategy: ZiCPiiStrategy::Placeholder("<EMAIL>".into()),
+                    context_window: 5,
+                    store_original: true,
+                },
+                ZiCPiiRule {
+                    tag: "phone".into(),
+                    pattern: Regex::new(r"\b\d{11}\b").unwrap(),
+                    strategy: ZiCPiiStrategy::Mask {
+                        mask_char: '*',
+                        prefix: 3,
+                        suffix: 2,
+                    },
+                    context_window: 3,
+                    store_original: false,
+                },
             ],
             Some("pii".into()),
+            HashSet::new(),
         );
         let batch = vec![ZiCRecord::ZiFNew(
             None,
@@ -169,7 +463,64 @@ mod tests {
         let out = op.apply(batch).unwrap();
         let text = out[0].payload["text"].as_str().unwrap();
         assert!(text.contains("<EMAIL>"));
-        assert!(text.contains("<PHONE>"));
-        assert!(out[0].metadata.as_ref().unwrap().get("pii").is_some());
+        assert!(text.contains("138****00"));
+        let meta = out[0].metadata.as_ref().unwrap();
+        let pii = meta.get("pii").unwrap().as_array().unwrap();
+        assert_eq!(pii.len(), 2);
+        assert_eq!(pii[0]["original"], Value::String("a@b.com".into()));
+        assert_eq!(pii[1]["strategy"], Value::String("mask".into()));
+    }
+
+    #[test]
+    fn hash_strategy_redaction() {
+        let op = ZiCPiiRedact::ZiFNew(
+            ZiCFieldPath::ZiFParse("payload.text").unwrap(),
+            vec![ZiCPiiRule {
+                tag: "account".into(),
+                pattern: Regex::new(r"acct-\d{4}").unwrap(),
+                strategy: ZiCPiiStrategy::Hash {
+                    salt: 42,
+                    prefix: 4,
+                    suffix: 4,
+                },
+                context_window: 2,
+                store_original: false,
+            }],
+            Some("pii".into()),
+            HashSet::new(),
+        );
+        let batch = vec![ZiCRecord::ZiFNew(
+            None,
+            json!({"text": "acct-1234 should be redacted"}),
+        )];
+        let out = op.apply(batch).unwrap();
+        let text = out[0].payload["text"].as_str().unwrap();
+        assert!(text.contains("acct-"));
+        assert!(!text.contains("acct-1234"));
+    }
+
+    #[test]
+    fn factory_default_rules() {
+        let config = json!({
+            "path": "payload.text",
+            "store_key": "pii",
+            "custom": [
+                {
+                    "tag": "id",
+                    "pattern": r"\bID-\d{6}\b",
+                    "strategy": "placeholder",
+                    "placeholder": "<ID>"
+                }
+            ]
+        });
+        let op = ZiFPiiRedactFactory(&config).unwrap();
+        let batch = vec![ZiCRecord::ZiFNew(
+            None,
+            json!({"text": "email a@b.com, id ID-123456"}),
+        )];
+        let out = op.apply(batch).unwrap();
+        let text = out[0].payload["text"].as_str().unwrap();
+        assert!(text.contains("<EMAIL>"));
+        assert!(text.contains("<ID>"));
     }
 }

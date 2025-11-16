@@ -1,4 +1,4 @@
-//! Copyright © 2025 Dunimd Team. All Rights Reserved.
+//! Copyright © 2025 Wenze Wei. All Rights Reserved.
 //!
 //! This file is part of Zi.
 //! The Zi project belongs to the Dunimd project team.
@@ -436,12 +436,35 @@ pub fn ZiFMetadataRequireFactory(config: &Value) -> Result<Box<dyn ZiCOperator +
 /// Copies values from payload paths into metadata keys.
 #[derive(Debug)]
 pub struct ZiCMetadataExtract {
-    mappings: Vec<(Vec<String>, String)>,
+    mappings: Vec<ZiCExtractionRule>,
+}
+
+/// Represents a single extraction rule for `metadata.extract`.
+///
+/// This struct is used to configure the `metadata.extract` operator.
+#[derive(Debug, Clone)]
+pub struct ZiCExtractionRule {
+    /// The path segments to extract from the payload.
+    ///
+    /// The path must start with "payload" and reference a valid field.
+    pub path_segments: Vec<String>,
+    /// The target metadata key to write the extracted value to.
+    pub target_key: String,
+    /// The default value to use if the extraction fails.
+    pub default_value: Option<Value>,
+    /// Whether the extraction is optional.
+    ///
+    /// If `true`, the operator will not error if the extraction fails.
+    pub optional: bool,
+    /// The regular expression pattern to apply to the extracted value.
+    pub pattern: Option<regex::Regex>,
+    /// The capture index to use if the pattern matches.
+    pub capture_index: Option<usize>,
 }
 
 impl ZiCMetadataExtract {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(mappings: Vec<(Vec<String>, String)>) -> Self {
+    pub fn ZiFNew(mappings: Vec<ZiCExtractionRule>) -> Self {
         Self { mappings }
     }
 
@@ -469,23 +492,61 @@ impl ZiCOperator for ZiCMetadataExtract {
         }
 
         for (index, record) in batch.iter_mut().enumerate() {
-            for (path, target) in &self.mappings {
-                if path.is_empty() {
-                    continue;
-                }
-
-                let cloned_value = {
-                    let Some(value) = ZiCMetadataExtract::ZiFResolvePath(&record.payload, path)
-                    else {
-                        return Err(ZiError::validation(format!(
-                            "record #{index} missing payload path '{}' for metadata.extract",
-                            path.join(".")
-                        )));
-                    };
-                    value.clone()
+            for rule in &self.mappings {
+                let Some(raw_value) =
+                    ZiCMetadataExtract::ZiFResolvePath(&record.payload, &rule.path_segments)
+                else {
+                    if let Some(default) = &rule.default_value {
+                        record
+                            .ZiFMetadataMut()
+                            .insert(rule.target_key.clone(), default.clone());
+                        continue;
+                    }
+                    if rule.optional {
+                        continue;
+                    }
+                    let path_string = rule
+                        .path_segments
+                        .iter()
+                        .map(|segment| segment.as_str())
+                        .collect::<Vec<_>>()
+                        .join(".");
+                    return Err(ZiError::validation(format!(
+                        "record #{index} missing payload path '{path_string}' for metadata.extract"
+                    )));
                 };
 
-                record.ZiFMetadataMut().insert(target.clone(), cloned_value);
+                let extracted = match (&rule.pattern, raw_value) {
+                    (Some(pattern), Value::String(s)) => {
+                        if let Some(caps) = pattern.captures(s) {
+                            let idx = rule.capture_index.unwrap_or(0);
+                            if let Some(mat) = caps.get(idx) {
+                                Value::String(mat.as_str().to_string())
+                            } else if let Some(default) = &rule.default_value {
+                                default.clone()
+                            } else if rule.optional {
+                                continue;
+                            } else {
+                                return Err(ZiError::validation(format!(
+                                    "record #{index} capture group {idx} missing for metadata.extract"
+                                )));
+                            }
+                        } else if let Some(default) = &rule.default_value {
+                            default.clone()
+                        } else if rule.optional {
+                            continue;
+                        } else {
+                            return Err(ZiError::validation(format!(
+                                "record #{index} pattern did not match for metadata.extract"
+                            )));
+                        }
+                    }
+                    _ => raw_value.clone(),
+                };
+
+                record
+                    .ZiFMetadataMut()
+                    .insert(rule.target_key.clone(), extracted);
             }
         }
 
@@ -506,16 +567,45 @@ pub fn ZiFMetadataExtractFactory(config: &Value) -> Result<Box<dyn ZiCOperator +
 
     let mut mappings = Vec::with_capacity(keys.len());
     for (source, target) in keys {
-        let target = target
-            .as_str()
-            .ok_or_else(|| ZiError::validation("metadata.extract target names must be strings"))?
+        let target_obj = target.as_object().ok_or_else(|| {
+            ZiError::validation("metadata.extract targets must be objects containing 'name'")
+        })?;
+
+        let target_key = target_obj
+            .get("name")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ZiError::validation("metadata.extract target requires string 'name'"))?
             .to_string();
 
-        if target.is_empty() {
+        if target_key.is_empty() {
             return Err(ZiError::validation(
-                "metadata.extract target names may not be empty",
+                "metadata.extract target 'name' may not be empty",
             ));
         }
+
+        let optional = target_obj
+            .get("optional")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        let default_value = target_obj.get("default").cloned();
+
+        let pattern = target_obj
+            .get("pattern")
+            .and_then(Value::as_str)
+            .map(|regex_str| {
+                regex::Regex::new(regex_str).map_err(|err| {
+                    ZiError::validation(format!(
+                        "metadata.extract provided invalid regex '{regex_str}': {err}"
+                    ))
+                })
+            })
+            .transpose()?;
+
+        let capture_index = target_obj
+            .get("capture")
+            .and_then(Value::as_u64)
+            .map(|idx| idx as usize);
 
         let segments: Vec<String> = source
             .split('.')
@@ -535,7 +625,15 @@ pub fn ZiFMetadataExtractFactory(config: &Value) -> Result<Box<dyn ZiCOperator +
             ));
         }
 
-        mappings.push((segments[1..].to_vec(), target));
+        let rule = ZiCExtractionRule {
+            path_segments: segments[1..].to_vec(),
+            target_key,
+            default_value,
+            optional,
+            pattern,
+            capture_index,
+        };
+        mappings.push(rule);
     }
 
     Ok(Box::new(ZiCMetadataExtract::ZiFNew(mappings)))
@@ -759,10 +857,16 @@ mod tests {
             }),
         );
 
-        let batch =
-            ZiCMetadataExtract::ZiFNew(vec![(vec!["value".into()], "payload_value".into())])
-                .apply(vec![record])
-                .unwrap();
+        let batch = ZiCMetadataExtract::ZiFNew(vec![ZiCExtractionRule {
+            path_segments: vec!["value".into()],
+            target_key: "payload_value".into(),
+            default_value: None,
+            optional: false,
+            pattern: None,
+            capture_index: None,
+        }])
+        .apply(vec![record])
+        .unwrap();
 
         let metadata = batch[0].metadata.as_ref().unwrap();
         assert_eq!(metadata.get("payload_value"), Some(&json!(1)));
@@ -771,9 +875,16 @@ mod tests {
     #[test]
     fn extract_errors_when_path_missing() {
         let record = ZiCRecord::ZiFNew(None, json!({"present": true}));
-        let err = ZiCMetadataExtract::ZiFNew(vec![(vec!["missing".into()], "meta".into())])
-            .apply(vec![record])
-            .unwrap_err();
+        let err = ZiCMetadataExtract::ZiFNew(vec![ZiCExtractionRule {
+            path_segments: vec!["missing".into()],
+            target_key: "meta".into(),
+            default_value: None,
+            optional: false,
+            pattern: None,
+            capture_index: None,
+        }])
+        .apply(vec![record])
+        .unwrap_err();
 
         match err {
             ZiError::Validation { message } => {
@@ -785,8 +896,14 @@ mod tests {
 
     #[test]
     fn extract_factory_builds_operator() {
-        let operator =
-            ZiFMetadataExtractFactory(&json!({"keys": {"payload.value": "stored"}})).unwrap();
+        let operator = ZiFMetadataExtractFactory(&json!({
+            "keys": {
+                "payload.value": {
+                    "name": "stored"
+                }
+            }
+        }))
+        .unwrap();
 
         let record = ZiCRecord::ZiFNew(None, json!({"value": 10}));
         let batch = operator.apply(vec![record]).unwrap();

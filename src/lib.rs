@@ -1,4 +1,4 @@
-//! Copyright © 2025 Dunimd Team. All Rights Reserved.
+//! Copyright © 2025 Wenze Wei. All Rights Reserved.
 //!
 //! This file is part of Zi.
 //! The Zi project belongs to the Dunimd project team.
@@ -15,6 +15,8 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+#![allow(non_snake_case)]
+
 pub mod errors;
 pub mod io;
 pub mod metrics;
@@ -22,3 +24,4 @@ pub mod operator;
 pub mod operators;
 pub mod pipeline;
 pub mod record;
+pub mod version;

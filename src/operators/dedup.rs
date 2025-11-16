@@ -1,4 +1,4 @@
-//! Copyright © 2025 Dunimd Team. All Rights Reserved.
+//! Copyright © 2025 Wenze Wei. All Rights Reserved.
 //!
 //! This file is part of Zi.
 //! The Zi project belongs to the Dunimd project team.
@@ -15,13 +15,14 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use serde_json::Value;
-use std::collections::HashSet;
+use serde_json::{Map, Number, Value};
+use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 
 use crate::errors::{Result, ZiError};
 use crate::operator::ZiCOperator;
 use crate::operators::filter::ZiCFieldPath;
-use crate::record::ZiCRecordBatch;
+use crate::record::{ZiCMetadata, ZiCRecordBatch};
 
 #[allow(non_snake_case)]
 fn ZiFHash64(s: &str) -> u64 {
@@ -66,20 +67,6 @@ fn ZiFTokenize(text: &str) -> Vec<String> {
         .filter(|t| !t.is_empty())
         .map(|t| t.to_lowercase())
         .collect()
-}
-
-#[allow(non_snake_case)]
-fn ZiFJaccard(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
-    if a.is_empty() && b.is_empty() {
-        return 1.0;
-    }
-    let intersection = a.intersection(b).count() as f64;
-    let union = (a.len() + b.len()) as f64 - intersection;
-    if union == 0.0 {
-        0.0
-    } else {
-        intersection / union
-    }
 }
 
 #[derive(Debug)]
@@ -174,7 +161,7 @@ impl _DedupMinHash {
         sig
     }
 
-        #[allow(non_snake_case)]
+    #[allow(non_snake_case)]
     fn _DedupMinHashJaccard(a: &[String], b: &[String]) -> f64 {
         use std::collections::HashSet;
         let sa: HashSet<&String> = a.iter().collect();
@@ -269,12 +256,33 @@ pub fn ZiFDedupMinhashFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Se
 struct _DedupSemantic {
     path: ZiCFieldPath,
     threshold: f64,
+    details_key: Option<String>,
+    max_duplicates: usize,
 }
 
 impl _DedupSemantic {
     fn new(path: ZiCFieldPath, threshold: f64) -> Self {
-        Self { path, threshold }
+        Self {
+            path,
+            threshold,
+            details_key: None,
+            max_duplicates: 50,
+        }
     }
+
+    fn with_details(mut self, details_key: Option<String>, max_duplicates: usize) -> Self {
+        self.details_key = details_key;
+        self.max_duplicates = max_duplicates;
+        self
+    }
+}
+
+#[derive(Debug)]
+struct _ZiCSemanticSeen {
+    weights: HashMap<String, f64>,
+    norm: f64,
+    out_index: usize,
+    id: Option<String>,
 }
 
 impl ZiCOperator for _DedupSemantic {
@@ -283,22 +291,135 @@ impl ZiCOperator for _DedupSemantic {
     }
 
     fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
-        let mut seen: Vec<HashSet<String>> = Vec::new();
-        let mut out = Vec::new();
+        let records = batch;
+        let mut tokenized: Vec<Option<Vec<String>>> = Vec::with_capacity(records.len());
+        let mut doc_freq: HashMap<String, usize> = HashMap::new();
+        let mut total_docs = 0usize;
 
-        'outer: for rec in batch.into_iter() {
-            if let Some(Value::String(text)) = self.path.ZiFResolve(&rec) {
-                let token_set: HashSet<String> = ZiFTokenize(text).into_iter().collect();
-                for existing in &seen {
-                    if ZiFJaccard(&token_set, existing) >= self.threshold {
-                        continue 'outer;
+        for record in &records {
+            if let Some(Value::String(text)) = self.path.ZiFResolve(record) {
+                let tokens = ZiFTokenize(text);
+                if !tokens.is_empty() {
+                    total_docs += 1;
+                    let mut unique = HashSet::new();
+                    for token in &tokens {
+                        if unique.insert(token) {
+                            *doc_freq.entry(token.clone()).or_insert(0) += 1;
+                        }
                     }
                 }
-                seen.push(token_set);
-                out.push(rec);
+                tokenized.push(Some(tokens));
             } else {
-                out.push(rec);
+                tokenized.push(None);
             }
+        }
+
+        let mut out = Vec::new();
+        let mut seen_vectors: Vec<_ZiCSemanticSeen> = Vec::new();
+
+        for (record, maybe_tokens) in records.into_iter().zip(tokenized.into_iter()) {
+            let tokens = match maybe_tokens {
+                Some(tokens) => tokens,
+                None => {
+                    let mut record = record;
+                    if let Some(details_key) = &self.details_key {
+                        _semantic_details_set_empty(record.ZiFMetadataMut(), details_key);
+                    }
+                    out.push(record);
+                    continue;
+                }
+            };
+
+            if tokens.is_empty() || total_docs == 0 {
+                let mut record = record;
+                if let Some(details_key) = &self.details_key {
+                    _semantic_details_set_empty(record.ZiFMetadataMut(), details_key);
+                }
+                out.push(record);
+                continue;
+            }
+
+            let mut term_counts: HashMap<String, usize> = HashMap::new();
+            for token in &tokens {
+                *term_counts.entry(token.clone()).or_insert(0) += 1;
+            }
+
+            let token_len = tokens.len() as f64;
+            let mut weights: HashMap<String, f64> = HashMap::new();
+            let mut norm_sq = 0.0f64;
+
+            for (token, count) in term_counts {
+                let tf = count as f64 / token_len;
+                let df = doc_freq.get(&token).copied().unwrap_or(1) as f64;
+                let idf = ((total_docs as f64 + 1.0) / (df + 1.0)).ln() + 1.0;
+                let weight = tf * idf;
+                norm_sq += weight * weight;
+                weights.insert(token, weight);
+            }
+
+            let norm = norm_sq.sqrt();
+            if norm == 0.0 {
+                let mut record = record;
+                if let Some(details_key) = &self.details_key {
+                    _semantic_details_set_empty(record.ZiFMetadataMut(), details_key);
+                }
+                let out_index = out.len();
+                seen_vectors.push(_ZiCSemanticSeen {
+                    weights,
+                    norm,
+                    out_index,
+                    id: record.id.clone(),
+                });
+                out.push(record);
+                continue;
+            }
+
+            let mut duplicate_of: Option<(usize, f64)> = None;
+            for (idx, seen) in seen_vectors.iter().enumerate() {
+                if seen.norm == 0.0 {
+                    continue;
+                }
+                let mut dot = 0.0f64;
+                for (token, weight) in &weights {
+                    if let Some(other) = seen.weights.get(token) {
+                        dot += weight * other;
+                    }
+                }
+                let cosine = dot / (norm * seen.norm);
+                if cosine >= self.threshold {
+                    duplicate_of = Some((idx, cosine));
+                    break;
+                }
+            }
+
+            if let Some((seen_idx, similarity)) = duplicate_of {
+                if let Some(details_key) = &self.details_key {
+                    let seen = &mut seen_vectors[seen_idx];
+                    let kept_record = &mut out[seen.out_index];
+                    _semantic_details_add_match(
+                        kept_record.ZiFMetadataMut(),
+                        details_key,
+                        record.id.as_deref(),
+                        similarity,
+                        self.max_duplicates,
+                    );
+                }
+                continue;
+            }
+
+            let mut record = record;
+            if let Some(details_key) = &self.details_key {
+                _semantic_details_set_empty(record.ZiFMetadataMut(), details_key);
+            }
+
+            let out_index = out.len();
+            seen_vectors.push(_ZiCSemanticSeen {
+                weights,
+                norm,
+                out_index,
+                id: record.id.clone(),
+            });
+            out.push(record);
         }
 
         Ok(out)
@@ -320,8 +441,18 @@ pub fn ZiFDedupSemanticFactory(config: &Value) -> Result<Box<dyn ZiCOperator + S
             "dedup.semantic 'threshold' must be in [0,1]",
         ));
     }
+    let details_key = obj
+        .get("details_key")
+        .and_then(Value::as_str)
+        .map(|s| s.to_string());
+    let max_matches = obj
+        .get("max_matches")
+        .and_then(Value::as_u64)
+        .unwrap_or(25) as usize;
     let field_path = ZiCFieldPath::ZiFParse(path)?;
-    Ok(Box::new(_DedupSemantic::new(field_path, threshold)))
+    Ok(Box::new(
+        _DedupSemantic::new(field_path, threshold).with_details(details_key, max_matches),
+    ))
 }
 
 #[cfg(test)]
@@ -359,13 +490,168 @@ mod tests {
         let op = _DedupSemantic::new(ZiCFieldPath::ZiFParse("payload.text").unwrap(), 0.5);
         let batch = vec![
             ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "Large language model"})),
-            ZiCRecord::ZiFNew(
-                Some("2".into()),
-                json!({"text": "Large language models"}),
-            ),
+            ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "Large language models"})),
             ZiCRecord::ZiFNew(Some("3".into()), json!({"text": "Small cats"})),
         ];
         let out = op.apply(batch).unwrap();
         assert_eq!(out.len(), 2);
+    }
+
+    #[test]
+    fn semantic_dedup_records_metadata_matches() {
+        let op = _DedupSemantic::new(ZiCFieldPath::ZiFParse("payload.text").unwrap(), 0.6)
+            .with_details(Some("semantic_dup".into()), 5);
+        let batch = vec![
+            ZiCRecord::ZiFNew(Some("keep".into()), json!({"text": "A quick brown fox jumps over"})),
+            ZiCRecord::ZiFNew(Some("dup1".into()), json!({"text": "A quick brown fox jumps"})),
+            ZiCRecord::ZiFNew(Some("unique".into()), json!({"text": "Completely different"})),
+        ];
+
+        let out = op.apply(batch).unwrap();
+        assert_eq!(out.len(), 2);
+
+        let kept = out
+            .iter()
+            .find(|rec| rec.id.as_deref() == Some("keep"))
+            .expect("kept record should remain");
+        let metadata = kept.metadata.as_ref().expect("metadata should exist");
+        let details = metadata
+            .get("semantic_dup")
+            .and_then(Value::as_object)
+            .expect("details should be present");
+        assert_eq!(details.get("duplicate"), Some(&Value::Bool(true)));
+        let matches = details
+            .get("matches")
+            .and_then(Value::as_array)
+            .expect("matches array present");
+        assert_eq!(matches.len(), 1);
+        let entry = matches[0].as_object().expect("match entry");
+        assert_eq!(entry.get("id"), Some(&Value::String("dup1".into())));
+        let sim = entry
+            .get("similarity")
+            .and_then(Value::as_f64)
+            .expect("similarity value");
+        assert!(sim >= 0.6 && sim <= 1.0);
+    }
+}
+
+fn _semantic_default_details() -> Map<String, Value> {
+    let mut obj = Map::new();
+    obj.insert("duplicate".into(), Value::Bool(false));
+    obj.insert("max_similarity".into(), Value::Null);
+    obj.insert("matches".into(), Value::Array(Vec::new()));
+    obj
+}
+
+fn _semantic_details_set_empty(metadata: &mut ZiCMetadata, key: &str) {
+    metadata.insert(key.to_string(), Value::Object(_semantic_default_details()));
+}
+
+fn _semantic_details_mut<'a>(metadata: &'a mut ZiCMetadata, key: &str) -> &'a mut Map<String, Value> {
+    if !metadata.contains_key(key) {
+        metadata.insert(key.to_string(), Value::Object(_semantic_default_details()));
+    }
+    match metadata.get_mut(key) {
+        Some(Value::Object(map)) => map,
+        _ => {
+            metadata.insert(key.to_string(), Value::Object(_semantic_default_details()));
+            match metadata.get_mut(key) {
+                Some(Value::Object(map)) => map,
+                _ => unreachable!("semantic details should be an object"),
+            }
+        }
+    }
+}
+
+fn _semantic_details_add_match(
+    metadata: &mut ZiCMetadata,
+    key: &str,
+    duplicate_id: Option<&str>,
+    similarity: f64,
+    max_duplicates: usize,
+) {
+    let details = _semantic_details_mut(metadata, key);
+    details.insert("duplicate".into(), Value::Bool(true));
+
+    if similarity.is_finite() {
+        let current_max = details
+            .get("max_similarity")
+            .and_then(Value::as_f64)
+            .unwrap_or(f64::NEG_INFINITY);
+        if similarity > current_max {
+            details.insert(
+                "max_similarity".into(),
+                Number::from_f64(similarity)
+                    .map(Value::Number)
+                    .unwrap_or(Value::Null),
+            );
+        }
+    }
+
+    let matches_value = details
+        .entry("matches".into())
+        .or_insert_with(|| Value::Array(Vec::new()));
+
+    let new_entry = {
+        let mut obj = Map::new();
+        if let Some(id) = duplicate_id {
+            obj.insert("id".into(), Value::String(id.to_string()));
+        }
+        obj.insert(
+            "similarity".into(),
+            Number::from_f64(similarity)
+                .map(Value::Number)
+                .unwrap_or(Value::Null),
+        );
+        Value::Object(obj)
+    };
+
+    if let Value::Array(matches) = matches_value {
+        if let Some(id) = duplicate_id {
+            if let Some(existing) = matches.iter_mut().find(|value| {
+                value
+                    .as_object()
+                    .and_then(|obj| obj.get("id"))
+                    .and_then(Value::as_str)
+                    == Some(id)
+            }) {
+                if let Some(obj) = existing.as_object_mut() {
+                    obj.insert(
+                        "similarity".into(),
+                        Number::from_f64(similarity)
+                            .map(Value::Number)
+                            .unwrap_or(Value::Null),
+                    );
+                }
+                return;
+            }
+        }
+
+        if matches.len() < max_duplicates {
+            matches.push(new_entry);
+            return;
+        }
+
+        if let Some((idx, min_sim)) = matches
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, value)| {
+                value
+                    .as_object()
+                    .and_then(|obj| obj.get("similarity"))
+                    .and_then(Value::as_f64)
+                    .map(|sim| (idx, sim))
+            })
+            .min_by(|a, b| match a.1.partial_cmp(&b.1) {
+                Some(order) => order,
+                None => Ordering::Equal,
+            })
+        {
+            if similarity > min_sim {
+                matches[idx] = new_entry;
+            }
+        }
+    } else {
+        *matches_value = Value::Array(vec![new_entry]);
     }
 }
