@@ -15,15 +15,21 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-#![allow(non_snake_case)]
+pub mod runtime;
+pub(crate) mod operator_registry;
+pub(crate) mod plugin_package;
 
-pub mod errors;
-pub mod io;
-pub mod metrics;
-pub mod operator;
-pub mod operators;
-pub mod pipeline;
-pub mod record;
-pub mod version;
-pub mod orbit;
-pub mod log;
+pub use runtime::{
+    ZiCDataVisibility,
+    ZiCExecutionContext,
+    ZiCInProcessOrbit,
+    ZiCOrbit,
+    ZiCPluginDescriptor,
+    ZiCPluginExport,
+    ZiCPluginExportKind,
+    ZiCPluginPolicy,
+    ZiFScriptOperatorFn,
+};
+
+pub use operator_registry::{ZiCOperatorRegistry, ZiFOperatorFactory};
+pub use plugin_package::ZiFLoadPluginDescriptorFromPath;

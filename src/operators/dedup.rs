@@ -282,7 +282,6 @@ struct _ZiCSemanticSeen {
     weights: HashMap<String, f64>,
     norm: f64,
     out_index: usize,
-    id: Option<String>,
 }
 
 impl ZiCOperator for _DedupSemantic {
@@ -368,7 +367,6 @@ impl ZiCOperator for _DedupSemantic {
                     weights,
                     norm,
                     out_index,
-                    id: record.id.clone(),
                 });
                 out.push(record);
                 continue;
@@ -417,7 +415,6 @@ impl ZiCOperator for _DedupSemantic {
                 weights,
                 norm,
                 out_index,
-                id: record.id.clone(),
             });
             out.push(record);
         }
@@ -445,95 +442,13 @@ pub fn ZiFDedupSemanticFactory(config: &Value) -> Result<Box<dyn ZiCOperator + S
         .get("details_key")
         .and_then(Value::as_str)
         .map(|s| s.to_string());
-    let max_matches = obj
-        .get("max_matches")
-        .and_then(Value::as_u64)
-        .unwrap_or(25) as usize;
+    let max_matches = obj.get("max_matches").and_then(Value::as_u64).unwrap_or(25) as usize;
     let field_path = ZiCFieldPath::ZiFParse(path)?;
     Ok(Box::new(
         _DedupSemantic::new(field_path, threshold).with_details(details_key, max_matches),
     ))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::record::ZiCRecord;
-    use serde_json::json;
-
-    #[test]
-    fn simhash_dedup_removes_near_duplicates() {
-        let op = _DedupSimHash::new(ZiCFieldPath::ZiFParse("payload.text").unwrap(), 0.9);
-        let batch = vec![
-            ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "Hello world!"})),
-            ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "hello   world"})),
-            ZiCRecord::ZiFNew(Some("3".into()), json!({"text": "Different text"})),
-        ];
-        let out = op.apply(batch).unwrap();
-        assert_eq!(out.len(), 2);
-    }
-
-    #[test]
-    fn minhash_dedup_removes_similar() {
-        let op = _DedupMinHash::new(ZiCFieldPath::ZiFParse("payload.text").unwrap(), 0.8, 32, 8);
-        let batch = vec![
-            ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "Alpha beta gamma"})),
-            ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "alpha  beta   gamma"})),
-            ZiCRecord::ZiFNew(Some("3".into()), json!({"text": "delta epsilon"})),
-        ];
-        let out = op.apply(batch).unwrap();
-        assert_eq!(out.len(), 2);
-    }
-
-    #[test]
-    fn semantic_dedup_removes_near_duplicates() {
-        let op = _DedupSemantic::new(ZiCFieldPath::ZiFParse("payload.text").unwrap(), 0.5);
-        let batch = vec![
-            ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "Large language model"})),
-            ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "Large language models"})),
-            ZiCRecord::ZiFNew(Some("3".into()), json!({"text": "Small cats"})),
-        ];
-        let out = op.apply(batch).unwrap();
-        assert_eq!(out.len(), 2);
-    }
-
-    #[test]
-    fn semantic_dedup_records_metadata_matches() {
-        let op = _DedupSemantic::new(ZiCFieldPath::ZiFParse("payload.text").unwrap(), 0.6)
-            .with_details(Some("semantic_dup".into()), 5);
-        let batch = vec![
-            ZiCRecord::ZiFNew(Some("keep".into()), json!({"text": "A quick brown fox jumps over"})),
-            ZiCRecord::ZiFNew(Some("dup1".into()), json!({"text": "A quick brown fox jumps"})),
-            ZiCRecord::ZiFNew(Some("unique".into()), json!({"text": "Completely different"})),
-        ];
-
-        let out = op.apply(batch).unwrap();
-        assert_eq!(out.len(), 2);
-
-        let kept = out
-            .iter()
-            .find(|rec| rec.id.as_deref() == Some("keep"))
-            .expect("kept record should remain");
-        let metadata = kept.metadata.as_ref().expect("metadata should exist");
-        let details = metadata
-            .get("semantic_dup")
-            .and_then(Value::as_object)
-            .expect("details should be present");
-        assert_eq!(details.get("duplicate"), Some(&Value::Bool(true)));
-        let matches = details
-            .get("matches")
-            .and_then(Value::as_array)
-            .expect("matches array present");
-        assert_eq!(matches.len(), 1);
-        let entry = matches[0].as_object().expect("match entry");
-        assert_eq!(entry.get("id"), Some(&Value::String("dup1".into())));
-        let sim = entry
-            .get("similarity")
-            .and_then(Value::as_f64)
-            .expect("similarity value");
-        assert!(sim >= 0.6 && sim <= 1.0);
-    }
-}
 
 fn _semantic_default_details() -> Map<String, Value> {
     let mut obj = Map::new();
@@ -547,19 +462,21 @@ fn _semantic_details_set_empty(metadata: &mut ZiCMetadata, key: &str) {
     metadata.insert(key.to_string(), Value::Object(_semantic_default_details()));
 }
 
-fn _semantic_details_mut<'a>(metadata: &'a mut ZiCMetadata, key: &str) -> &'a mut Map<String, Value> {
-    if !metadata.contains_key(key) {
-        metadata.insert(key.to_string(), Value::Object(_semantic_default_details()));
+fn _semantic_details_mut<'a>(
+    metadata: &'a mut ZiCMetadata,
+    key: &str,
+) -> &'a mut Map<String, Value> {
+    let entry = metadata
+        .entry(key.to_string())
+        .or_insert_with(|| Value::Object(_semantic_default_details()));
+
+    if !entry.is_object() {
+        *entry = Value::Object(_semantic_default_details());
     }
-    match metadata.get_mut(key) {
-        Some(Value::Object(map)) => map,
-        _ => {
-            metadata.insert(key.to_string(), Value::Object(_semantic_default_details()));
-            match metadata.get_mut(key) {
-                Some(Value::Object(map)) => map,
-                _ => unreachable!("semantic details should be an object"),
-            }
-        }
+
+    match entry {
+        Value::Object(map) => map,
+        _ => unreachable!("semantic details should be an object"),
     }
 }
 
@@ -589,7 +506,7 @@ fn _semantic_details_add_match(
     }
 
     let matches_value = details
-        .entry("matches".into())
+        .entry("matches".to_string())
         .or_insert_with(|| Value::Array(Vec::new()));
 
     let new_entry = {

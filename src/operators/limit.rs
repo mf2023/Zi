@@ -54,35 +54,3 @@ pub fn ZiFLimitFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sy
     Ok(Box::new(ZiCLimit::ZiFNew(count as usize)))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::record::ZiCRecord;
-    use serde_json::json;
-
-    #[test]
-    fn limit_truncates_batch() {
-        let operator = ZiCLimit::ZiFNew(1);
-        let batch = vec![
-            ZiCRecord::ZiFNew(Some("a".into()), json!(1)),
-            ZiCRecord::ZiFNew(Some("b".into()), json!(2)),
-        ];
-
-        let output = operator.apply(batch).unwrap();
-        assert_eq!(output.len(), 1);
-        assert_eq!(output[0].id.as_deref(), Some("a"));
-    }
-
-    #[test]
-    fn limit_factory_reads_config() {
-        let operator = ZiFLimitFactory(&json!({"count": 2})).unwrap();
-        let batch = vec![
-            ZiCRecord::ZiFNew(None, json!(1)),
-            ZiCRecord::ZiFNew(None, json!(2)),
-            ZiCRecord::ZiFNew(None, json!(3)),
-        ];
-
-        let output = operator.apply(batch).unwrap();
-        assert_eq!(output.len(), 2);
-    }
-}

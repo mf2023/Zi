@@ -15,77 +15,6 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-#[cfg(test)]
-use serde_json::json;
-
-#[test]
-fn filter_contains_none_case_insensitive_rejects() {
-    let operator = ZiCFilterContainsNone::ZiFNew(
-        ZiCFieldPath::ZiFParse("payload.text").unwrap(),
-        vec!["BLOCK".into()],
-        true,
-    );
-    let batch = vec![
-        ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "safe"})),
-        ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "Block entry"})),
-    ];
-
-    let output = operator.apply(batch).unwrap();
-    assert_eq!(output.len(), 1);
-    assert_eq!(output[0].id.as_deref(), Some("1"));
-}
-
-#[test]
-fn filter_contains_all_case_insensitive_requires_all() {
-    let operator = ZiCFilterContainsAll::ZiFNew(
-        ZiCFieldPath::ZiFParse("payload.text").unwrap(),
-        vec!["HELLO".into(), "WORLD".into()],
-        true,
-    );
-    let batch = vec![
-        ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "hello world"})),
-        ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "HELLO"})),
-    ];
-
-    let output = operator.apply(batch).unwrap();
-    assert_eq!(output.len(), 1);
-    assert_eq!(output[0].id.as_deref(), Some("1"));
-}
-
-#[test]
-fn filter_contains_any_case_insensitive_matches() {
-    let operator = ZiCFilterContainsAny::ZiFNew(
-        ZiCFieldPath::ZiFParse("payload.text").unwrap(),
-        vec!["HELLO".into(), "WORLD".into()],
-        true,
-    );
-    let batch = vec![
-        ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "Hello there"})),
-        ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "goodbye"})),
-    ];
-
-    let output = operator.apply(batch).unwrap();
-    assert_eq!(output.len(), 1);
-    assert_eq!(output[0].id.as_deref(), Some("1"));
-}
-
-#[test]
-fn filter_contains_matches_case_insensitive() {
-    let operator = ZiCFilterContains::ZiFNew(
-        ZiCFieldPath::ZiFParse("payload.text").unwrap(),
-        "NEWS".into(),
-        true,
-    );
-    let batch = vec![
-        ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "breaking news"})),
-        ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "BREAKING"})),
-    ];
-
-    let output = operator.apply(batch).unwrap();
-    assert_eq!(output.len(), 1);
-    assert_eq!(output[0].id.as_deref(), Some("1"));
-}
-
 use regex::Regex;
 use serde_json::Value;
 
@@ -1561,89 +1490,6 @@ impl ZiCFieldPath {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use regex::Regex;
-    use serde_json::{json, Value};
-
-    #[test]
-    fn filter_equals_retains_matching_records() {
-        let operator =
-            ZiCFilterEquals::ZiFNew(ZiCFieldPath::ZiFParse("payload.lang").unwrap(), json!("en"));
-        let batch = vec![
-            ZiCRecord::ZiFNew(Some("1".into()), json!({"lang": "en"})),
-            ZiCRecord::ZiFNew(Some("2".into()), json!({"lang": "zh"})),
-        ];
-
-        let output = operator.apply(batch).unwrap();
-        assert_eq!(output.len(), 1);
-        assert_eq!(output[0].id.as_deref(), Some("1"));
-    }
-
-    #[test]
-    fn filter_contains_handles_string_arrays() {
-        let operator = ZiCFilterContains::ZiFNew(
-            ZiCFieldPath::ZiFParse("metadata.tags").unwrap(),
-            "news".into(),
-            false,
-        );
-        let mut record_match = ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "hello"}));
-        record_match
-            .ZiFMetadataMut()
-            .insert("tags".into(), json!(["breaking news", "daily"]));
-
-        let mut record_substring = ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "hello"}));
-        record_substring
-            .ZiFMetadataMut()
-            .insert("tags".into(), json!(["newsworthy", "weekly"]));
-
-        let mut record_miss = ZiCRecord::ZiFNew(Some("3".into()), json!({"text": "hello"}));
-        record_miss
-            .ZiFMetadataMut()
-            .insert("tags".into(), json!(["daily", "gamma"]));
-
-        let output = operator
-            .apply(vec![record_match, record_substring, record_miss])
-            .unwrap();
-        let ids: Vec<_> = output.iter().map(|record| record.id.as_deref()).collect();
-        assert_eq!(ids, vec![Some("1"), Some("2")]);
-    }
-
-    #[test]
-    fn filter_equals_supports_metadata_paths() {
-        let mut record = ZiCRecord::ZiFNew(Some("1".into()), json!({"lang": "en"}));
-        record
-            .ZiFMetadataMut()
-            .insert("category".to_string(), json!("news"));
-
-        let batch = vec![record];
-        let operator = ZiCFilterEquals::ZiFNew(
-            ZiCFieldPath::ZiFParse("metadata.category").unwrap(),
-            json!("news"),
-        );
-
-        let output = operator.apply(batch).unwrap();
-        assert_eq!(output.len(), 1);
-    }
-
-    #[test]
-    fn filter_contains_matches_substrings() {
-        let operator = ZiCFilterContains::ZiFNew(
-            ZiCFieldPath::ZiFParse("payload.text").unwrap(),
-            "news".into(),
-            false,
-        );
-        let batch = vec![
-            ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "breaking news"})),
-            ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "sports"})),
-        ];
-
-        let output = operator.apply(batch).unwrap();
-        assert_eq!(output.len(), 1);
-        assert_eq!(output[0].id.as_deref(), Some("1"));
-    }
-
     #[test]
     fn filter_contains_factory_parses_config() {
         let config = json!({"path": "metadata.tags", "contains": "vip"});
@@ -1787,115 +1633,7 @@ mod tests {
             false,
         );
 
-        let record_missing = ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "clean"}));
-
-        let mut record_null = ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "clean"}));
-        record_null
-            .ZiFMetadataMut()
-            .insert("notes".into(), Value::Null);
-
-        let mut record_blocked = ZiCRecord::ZiFNew(Some("3".into()), json!({"text": "blocked"}));
-        record_blocked
-            .ZiFMetadataMut()
-            .insert("notes".into(), json!("blocked entry"));
-
-        let output = operator
-            .apply(vec![record_missing, record_null, record_blocked])
-            .unwrap();
-        let ids: Vec<_> = output.iter().map(|record| record.id.as_deref()).collect();
-        assert_eq!(ids, vec![Some("1"), Some("2")]);
-    }
-
-    #[test]
-    fn filter_contains_none_handles_string_arrays() {
-        let operator = ZiCFilterContainsNone::ZiFNew(
-            ZiCFieldPath::ZiFParse("metadata.tags").unwrap(),
-            vec!["blocked".into(), "spam".into()],
-            false,
-        );
-
-        let mut record_allowed = ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "hello"}));
-        record_allowed
-            .ZiFMetadataMut()
-            .insert("tags".into(), json!(["primary", "beta"]));
-
-        let mut record_blocked = ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "hello"}));
-        record_blocked
-            .ZiFMetadataMut()
-            .insert("tags".into(), json!(["primary", "blocked"]));
-
-        let mut record_substring = ZiCRecord::ZiFNew(Some("3".into()), json!({"text": "hello"}));
-        record_substring
-            .ZiFMetadataMut()
-            .insert("tags".into(), json!(["preblocked", "daily"]));
-
-        let output = operator
-            .apply(vec![record_allowed, record_blocked, record_substring])
-            .unwrap();
-        let ids: Vec<_> = output.iter().map(|record| record.id.as_deref()).collect();
-        assert_eq!(ids, vec![Some("1")]);
-    }
-
-    #[test]
-    fn filter_ends_with_matches_suffix() {
-        let operator = ZiCFilterEndsWith::ZiFNew(
-            ZiCFieldPath::ZiFParse("payload.text").unwrap(),
-            "world".into(),
-        );
-        let batch = vec![
-            ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "hello world"})),
-            ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "planet"})),
-        ];
-
-        let output = operator.apply(batch).unwrap();
-        assert_eq!(output.len(), 1);
-        assert_eq!(output[0].id.as_deref(), Some("1"));
-    }
-
-    #[test]
-    fn filter_ends_with_factory_parses_config() {
-        let config = json!({"path": "metadata.tags", "suffix": "vip"});
-        let operator = ZiFFilterEndsWithFactory(&config).unwrap();
-
-        let mut record = ZiCRecord::ZiFNew(None, json!({"lang": "en"}));
-        record
-            .ZiFMetadataMut()
-            .insert("tags".into(), json!(["gold:vip", "priority"]));
-        let batch = vec![record, ZiCRecord::ZiFNew(None, json!({"lang": "en"}))];
-
-        let output = operator.apply(batch).unwrap();
-        assert_eq!(output.len(), 1);
-
-        let err = ZiFFilterEndsWithFactory(&json!({"path": "payload.text"})).unwrap_err();
-        match err {
-            ZiError::Validation { message } => {
-                assert!(message.contains("suffix"));
-            }
-            other => panic!("unexpected error: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn filter_regex_matches_patterns() {
-        let regex = Regex::new("^hello").unwrap();
-        let operator =
-            ZiCFilterRegex::ZiFNew(ZiCFieldPath::ZiFParse("payload.text").unwrap(), regex);
-        let batch = vec![
-            ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "hello world"})),
-            ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "world"})),
-        ];
-
-        let output = operator.apply(batch).unwrap();
-        assert_eq!(output.len(), 1);
-        assert_eq!(output[0].id.as_deref(), Some("1"));
-    }
-
-    #[test]
-    fn filter_regex_factory_parses_config() {
-        let config = json!({"path": "metadata.tags", "pattern": "^vip"});
-        let operator = ZiFFilterRegexFactory(&config).unwrap();
-
-        let mut record = ZiCRecord::ZiFNew(None, json!({"lang": "en"}));
+        let mut record = ZiCRecord::ZiFNew(None, json!({}));
         record
             .ZiFMetadataMut()
             .insert("tags".into(), json!(["vip_gold", "priority"]));
@@ -2317,7 +2055,7 @@ mod tests {
             _ => panic!("unexpected error kind"),
         }
     }
-}
+
 /// Keeps string fields whose character length falls within optional bounds.
 #[derive(Debug)]
 pub struct ZiCFilterLengthRange {

@@ -79,12 +79,18 @@ fn library_end_to_end_cleans_dataset() {
         .expect("build pipeline");
 
     let processed = pipeline.run(batch).expect("run pipeline");
-    assert_eq!(processed.len(), 2, "cleaned dataset should keep two high-quality uniques");
+    assert_eq!(
+        processed.len(),
+        2,
+        "cleaned dataset should keep two high-quality uniques"
+    );
 
     println!("=== Cleaned Records ===");
     for record in &processed {
         let id = record.id.as_deref().unwrap_or("<no-id>");
-        let text = record.payload["text"].as_str().expect("text should be string");
+        let text = record.payload["text"]
+            .as_str()
+            .expect("text should be string");
         println!("record {id}: {text}");
         if let Some(metadata) = &record.metadata {
             let printable = Value::Object(metadata.clone());
@@ -140,7 +146,10 @@ fn library_end_to_end_cleans_dataset() {
         text4.contains('*'),
         "phone number should be masked with asterisks"
     );
-    assert!(!text4.contains("6 12 34 56 78"), "original phone digits should not remain");
+    assert!(
+        !text4.contains("6 12 34 56 78"),
+        "original phone digits should not remain"
+    );
     let meta4 = rec4.metadata.as_ref().expect("metadata should exist");
     let quality4 = meta4
         .get("quality")
@@ -158,9 +167,7 @@ fn library_end_to_end_cleans_dataset() {
             .as_str()
             .expect("text should be string");
         assert_eq!(text, text.trim(), "text should be trimmed");
-        let lowered_check = text
-            .replace("<EMAIL>", "<email>")
-            .replace("<ID>", "<id>");
+        let lowered_check = text.replace("<EMAIL>", "<email>").replace("<ID>", "<id>");
         assert_eq!(
             lowered_check,
             lowered_check.to_lowercase(),

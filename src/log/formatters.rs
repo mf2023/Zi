@@ -15,15 +15,27 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-#![allow(non_snake_case)]
+use serde_json::Value;
 
-pub mod errors;
-pub mod io;
-pub mod metrics;
-pub mod operator;
-pub mod operators;
-pub mod pipeline;
-pub mod record;
-pub mod version;
-pub mod orbit;
-pub mod log;
+use crate::log::core::ZiCLogRecord;
+
+pub struct ZiCJsonFormatter;
+
+impl ZiCJsonFormatter {
+    #[allow(non_snake_case)]
+    pub fn ZiFFormat(record: &ZiCLogRecord) -> String {
+        record.ZiFToJson().to_string()
+    }
+}
+
+pub struct ZiCTextFormatter;
+
+impl ZiCTextFormatter {
+    #[allow(non_snake_case)]
+    pub fn ZiFFormat(record: &ZiCLogRecord) -> String {
+        let v: Value = record.ZiFToJson();
+        // Simple human-readable formatting; for now reuse the JSON but could
+        // be made more compact.
+        v.to_string()
+    }
+}

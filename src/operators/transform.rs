@@ -84,7 +84,7 @@ mod tests {
     #[test]
     fn normalize_basic() {
         let op = _TransformNormalize::ZiFNew(ZiCFieldPath::ZiFParse("payload.text").unwrap(), true);
-        let mut rec = ZiCRecord::ZiFNew(None, json!({"text": "  Hello   WORLD "}));
+        let rec = ZiCRecord::ZiFNew(None, json!({"text": "  Hello   WORLD "}));
         let out = op.apply(vec![rec]).unwrap();
         assert_eq!(out[0].payload["text"], json!("hello world"));
     }
