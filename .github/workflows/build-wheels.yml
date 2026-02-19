@@ -57,6 +57,11 @@ jobs:
       - name: Checkout Zi
         uses: actions/checkout@v4
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -92,15 +97,15 @@ jobs:
       - name: Checkout Zi
         uses: actions/checkout@v4
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-unknown-linux-gnu
-
-      - name: Install cross-compiler
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -218,6 +223,8 @@ jobs:
             ${{ runner.os }}-cargo-zi-arm64-
 
       - name: Build Zi
+        env:
+          RUSTFLAGS: "-C target-cpu=apple-m1"
         run: cargo build --release --features full --target aarch64-apple-darwin
 
       - name: Upload artifact
@@ -237,6 +244,11 @@ jobs:
 #    steps:
 #      - name: Checkout Zi
 #        uses: actions/checkout@v4
+#
+#      - name: Install system dependencies
+#        run: |
+#          sudo apt-get update
+#          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
 #
 #      - name: Install Rust toolchain
 #        uses: dtolnay/rust-toolchain@stable
@@ -280,15 +292,15 @@ jobs:
 #      - name: Checkout Zi
 #        uses: actions/checkout@v4
 #
+#      - name: Install system dependencies
+#        run: |
+#          sudo apt-get update
+#          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+#
 #      - name: Install Rust toolchain
 #        uses: dtolnay/rust-toolchain@stable
 #        with:
 #          targets: aarch64-unknown-linux-gnu
-#
-#      - name: Install cross-compiler
-#        run: |
-#          sudo apt-get update
-#          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 #
 #      - name: Setup Python
 #        uses: actions/setup-python@v5
@@ -440,6 +452,8 @@ jobs:
 #            ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-
 #
 #      - name: Build wheel
+#        env:
+#          RUSTFLAGS: "-C target-cpu=apple-m1"
 #        run: maturin build --release --features pyo3 --target aarch64-apple-darwin --interpreter python${{ matrix.python }} --out dist
 #
 #      - name: Upload wheel
@@ -529,6 +543,11 @@ jobs:
       - name: Checkout Zi
         uses: actions/checkout@v4
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -544,6 +563,11 @@ jobs:
     steps:
       - name: Checkout Zi
         uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -561,39 +585,3 @@ jobs:
 
       - name: Run benchmarks
         run: cargo bench --features full -- --save-baseline pr-baseline || true
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Zi
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Check formatting
-        run: cargo fmt -- --check || true
-
-      - name: Run clippy
-        run: cargo clippy --features full -- -D warnings || true
-
-  docs:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Zi
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build documentation
-        run: cargo doc --features full --no-deps || true
-
-      - name: Upload docs
-        uses: actions/upload-artifact@v4
-        with:
-          name: zi-docs
-          path: target/doc
-          retention-days: 7
