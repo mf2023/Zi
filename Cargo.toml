@@ -41,7 +41,7 @@ edge = []
 
 [dependencies]
 # DMSC Infrastructure
-dmsc = { path = "../DMS", features = [
+dmsc = { version = "0.1.8-beta.2", features = [
     "cache",
     "observability",
 ] }

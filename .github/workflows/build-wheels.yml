@@ -56,15 +56,6 @@ jobs:
     steps:
       - name: Checkout Zi
         uses: actions/checkout@v4
-        with:
-          path: Zi
-
-      - name: Checkout DMSC
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/DMS
-          path: DMS
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -83,20 +74,16 @@ jobs:
             ${{ runner.os }}-cargo-zi-x64-
 
       - name: Build Zi
-        working-directory: Zi
-        run: |
-          cargo build --release --features full
+        run: cargo build --release --features full
 
       - name: Run Rust tests
-        working-directory: Zi
-        run: |
-          cargo test --release --features full --no-fail-fast -- --test-threads=4
+        run: cargo test --release --features full --no-fail-fast -- --test-threads=4
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: zi-rust-linux-x64
-          path: Zi/target/release/libZi.rlib
+          path: target/release/libZi.rlib
           retention-days: 7
 
   build-rust-linux-arm64:
@@ -104,15 +91,6 @@ jobs:
     steps:
       - name: Checkout Zi
         uses: actions/checkout@v4
-        with:
-          path: Zi
-
-      - name: Checkout DMSC
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/DMS
-          path: DMS
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -136,17 +114,15 @@ jobs:
             ${{ runner.os }}-cargo-zi-arm64-
 
       - name: Build Zi
-        working-directory: Zi
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-        run: |
-          cargo build --release --features full --target aarch64-unknown-linux-gnu
+        run: cargo build --release --features full --target aarch64-unknown-linux-gnu
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: zi-rust-linux-arm64
-          path: Zi/target/aarch64-unknown-linux-gnu/release/libZi.rlib
+          path: target/aarch64-unknown-linux-gnu/release/libZi.rlib
           retention-days: 7
 
   build-rust-windows-x64:
@@ -154,15 +130,6 @@ jobs:
     steps:
       - name: Checkout Zi
         uses: actions/checkout@v4
-        with:
-          path: Zi
-
-      - name: Checkout DMSC
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/DMS
-          path: DMS
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -181,20 +148,16 @@ jobs:
             ${{ runner.os }}-cargo-zi-x64-
 
       - name: Build Zi
-        working-directory: Zi
-        run: |
-          cargo build --release --features full
+        run: cargo build --release --features full
 
       - name: Run Rust tests
-        working-directory: Zi
-        run: |
-          cargo test --release --features full --no-fail-fast -- --test-threads=4
+        run: cargo test --release --features full --no-fail-fast -- --test-threads=4
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: zi-rust-windows-x64
-          path: Zi/target/release/Zi.lib
+          path: target/release/Zi.lib
           retention-days: 7
 
   build-rust-macos-x64:
@@ -202,15 +165,6 @@ jobs:
     steps:
       - name: Checkout Zi
         uses: actions/checkout@v4
-        with:
-          path: Zi
-
-      - name: Checkout DMSC
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/DMS
-          path: DMS
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -229,20 +183,16 @@ jobs:
             ${{ runner.os }}-cargo-zi-x64-
 
       - name: Build Zi
-        working-directory: Zi
-        run: |
-          cargo build --release --features full
+        run: cargo build --release --features full
 
       - name: Run Rust tests
-        working-directory: Zi
-        run: |
-          cargo test --release --features full --no-fail-fast -- --test-threads=4
+        run: cargo test --release --features full --no-fail-fast -- --test-threads=4
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: zi-rust-macos-x64
-          path: Zi/target/release/libZi.rlib
+          path: target/release/libZi.rlib
           retention-days: 7
 
   build-rust-macos-arm64:
@@ -250,15 +200,6 @@ jobs:
     steps:
       - name: Checkout Zi
         uses: actions/checkout@v4
-        with:
-          path: Zi
-
-      - name: Checkout DMSC
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/DMS
-          path: DMS
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -277,15 +218,13 @@ jobs:
             ${{ runner.os }}-cargo-zi-arm64-
 
       - name: Build Zi
-        working-directory: Zi
-        run: |
-          cargo build --release --features full --target aarch64-apple-darwin
+        run: cargo build --release --features full --target aarch64-apple-darwin
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: zi-rust-macos-arm64
-          path: Zi/target/aarch64-apple-darwin/release/libZi.rlib
+          path: target/aarch64-apple-darwin/release/libZi.rlib
           retention-days: 7
 
 # TODO: Enable when Python bindings are ready
@@ -298,15 +237,6 @@ jobs:
 #    steps:
 #      - name: Checkout Zi
 #        uses: actions/checkout@v4
-#        with:
-#          path: Zi
-#
-#      - name: Checkout DMSC
-#        uses: actions/checkout@v4
-#        with:
-#          repository: ${{ github.repository_owner }}/DMS
-#          path: DMS
-#          token: ${{ secrets.GITHUB_TOKEN }}
 #
 #      - name: Install Rust toolchain
 #        uses: dtolnay/rust-toolchain@stable
@@ -325,21 +255,19 @@ jobs:
 #          path: |
 #            ~/.cargo/registry
 #            ~/.cargo/git
-#            Zi/target
+#            target
 #          key: ${{ runner.os }}-wheel-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
 #          restore-keys: |
 #            ${{ runner.os }}-wheel-${{ matrix.python }}-
 #
 #      - name: Build wheel
-#        working-directory: Zi
-#        run: |
-#          maturin build --release --features pyo3 --interpreter python${{ matrix.python }} --out dist
+#        run: maturin build --release --features pyo3 --interpreter python${{ matrix.python }} --out dist
 #
 #      - name: Upload wheel
 #        uses: actions/upload-artifact@v4
 #        with:
 #          name: zi-wheel-linux-${{ matrix.python }}
-#          path: Zi/dist/*.whl
+#          path: dist/*.whl
 #          retention-days: 7
 #
 #  build-wheels-linux-arm64:
@@ -351,15 +279,6 @@ jobs:
 #    steps:
 #      - name: Checkout Zi
 #        uses: actions/checkout@v4
-#        with:
-#          path: Zi
-#
-#      - name: Checkout DMSC
-#        uses: actions/checkout@v4
-#        with:
-#          repository: ${{ github.repository_owner }}/DMS
-#          path: DMS
-#          token: ${{ secrets.GITHUB_TOKEN }}
 #
 #      - name: Install Rust toolchain
 #        uses: dtolnay/rust-toolchain@stable
@@ -385,23 +304,21 @@ jobs:
 #          path: |
 #            ~/.cargo/registry
 #            ~/.cargo/git
-#            Zi/target
+#            target
 #          key: ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
 #          restore-keys: |
 #            ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-
 #
 #      - name: Build wheel
-#        working-directory: Zi
 #        env:
 #          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-#        run: |
-#          maturin build --release --features pyo3 --target aarch64-unknown-linux-gnu --interpreter python${{ matrix.python }} --out dist
+#        run: maturin build --release --features pyo3 --target aarch64-unknown-linux-gnu --interpreter python${{ matrix.python }} --out dist
 #
 #      - name: Upload wheel
 #        uses: actions/upload-artifact@v4
 #        with:
 #          name: zi-wheel-linux-arm64-${{ matrix.python }}
-#          path: Zi/dist/*.whl
+#          path: dist/*.whl
 #          retention-days: 7
 #
 #  build-wheels-windows:
@@ -413,15 +330,6 @@ jobs:
 #    steps:
 #      - name: Checkout Zi
 #        uses: actions/checkout@v4
-#        with:
-#          path: Zi
-#
-#      - name: Checkout DMSC
-#        uses: actions/checkout@v4
-#        with:
-#          repository: ${{ github.repository_owner }}/DMS
-#          path: DMS
-#          token: ${{ secrets.GITHUB_TOKEN }}
 #
 #      - name: Install Rust toolchain
 #        uses: dtolnay/rust-toolchain@stable
@@ -440,21 +348,19 @@ jobs:
 #          path: |
 #            ~/.cargo/registry
 #            ~/.cargo/git
-#            Zi/target
+#            target
 #          key: ${{ runner.os }}-wheel-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
 #          restore-keys: |
 #            ${{ runner.os }}-wheel-${{ matrix.python }}-
 #
 #      - name: Build wheel
-#        working-directory: Zi
-#        run: |
-#          maturin build --release --features pyo3 --interpreter python --out dist
+#        run: maturin build --release --features pyo3 --interpreter python --out dist
 #
 #      - name: Upload wheel
 #        uses: actions/upload-artifact@v4
 #        with:
 #          name: zi-wheel-windows-${{ matrix.python }}
-#          path: Zi/dist/*.whl
+#          path: dist/*.whl
 #          retention-days: 7
 #
 #  build-wheels-macos-x64:
@@ -466,15 +372,6 @@ jobs:
 #    steps:
 #      - name: Checkout Zi
 #        uses: actions/checkout@v4
-#        with:
-#          path: Zi
-#
-#      - name: Checkout DMSC
-#        uses: actions/checkout@v4
-#        with:
-#          repository: ${{ github.repository_owner }}/DMS
-#          path: DMS
-#          token: ${{ secrets.GITHUB_TOKEN }}
 #
 #      - name: Install Rust toolchain
 #        uses: dtolnay/rust-toolchain@stable
@@ -493,21 +390,19 @@ jobs:
 #          path: |
 #            ~/.cargo/registry
 #            ~/.cargo/git
-#            Zi/target
+#            target
 #          key: ${{ runner.os }}-wheel-x64-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
 #          restore-keys: |
 #            ${{ runner.os }}-wheel-x64-${{ matrix.python }}-
 #
 #      - name: Build wheel
-#        working-directory: Zi
-#        run: |
-#          maturin build --release --features pyo3 --interpreter python${{ matrix.python }} --out dist
+#        run: maturin build --release --features pyo3 --interpreter python${{ matrix.python }} --out dist
 #
 #      - name: Upload wheel
 #        uses: actions/upload-artifact@v4
 #        with:
 #          name: zi-wheel-macos-x64-${{ matrix.python }}
-#          path: Zi/dist/*.whl
+#          path: dist/*.whl
 #          retention-days: 7
 #
 #  build-wheels-macos-arm64:
@@ -519,15 +414,6 @@ jobs:
 #    steps:
 #      - name: Checkout Zi
 #        uses: actions/checkout@v4
-#        with:
-#          path: Zi
-#
-#      - name: Checkout DMSC
-#        uses: actions/checkout@v4
-#        with:
-#          repository: ${{ github.repository_owner }}/DMS
-#          path: DMS
-#          token: ${{ secrets.GITHUB_TOKEN }}
 #
 #      - name: Install Rust toolchain
 #        uses: dtolnay/rust-toolchain@stable
@@ -548,21 +434,19 @@ jobs:
 #          path: |
 #            ~/.cargo/registry
 #            ~/.cargo/git
-#            Zi/target
+#            target
 #          key: ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
 #          restore-keys: |
 #            ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-
 #
 #      - name: Build wheel
-#        working-directory: Zi
-#        run: |
-#          maturin build --release --features pyo3 --target aarch64-apple-darwin --interpreter python${{ matrix.python }} --out dist
+#        run: maturin build --release --features pyo3 --target aarch64-apple-darwin --interpreter python${{ matrix.python }} --out dist
 #
 #      - name: Upload wheel
 #        uses: actions/upload-artifact@v4
 #        with:
 #          name: zi-wheel-macos-arm64-${{ matrix.python }}
-#          path: Zi/dist/*.whl
+#          path: dist/*.whl
 #          retention-days: 7
 #
 #  test-python:
@@ -587,12 +471,10 @@ jobs:
 #          path: dist
 #
 #      - name: Install wheel
-#        run: |
-#          pip install dist/*.whl
+#        run: pip install dist/*.whl
 #
 #      - name: Test import
-#        run: |
-#          python -c "import Zi; print('Zi imported successfully')"
+#        run: python -c "import Zi; print('Zi imported successfully')"
 #
 #  publish-pypi:
 #    needs: [build-wheels-linux, build-wheels-linux-arm64, build-wheels-windows, build-wheels-macos-x64, build-wheels-macos-arm64, test-python]
@@ -647,22 +529,13 @@ jobs:
       - name: Checkout Zi
         uses: actions/checkout@v4
 
-      - name: Checkout DMSC
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/DMS
-          path: DMS
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Publish to crates.io
-        working-directory: Zi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-        run: |
-          cargo publish --token $CARGO_REGISTRY_TOKEN
+        run: cargo publish --token $CARGO_REGISTRY_TOKEN
 
   benchmark:
     needs: [build-rust-linux-x64]
@@ -671,15 +544,6 @@ jobs:
     steps:
       - name: Checkout Zi
         uses: actions/checkout@v4
-        with:
-          path: Zi
-
-      - name: Checkout DMSC
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/DMS
-          path: DMS
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -690,30 +554,19 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            Zi/target
+            target
           key: ${{ runner.os }}-bench-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-bench-
 
       - name: Run benchmarks
-        working-directory: Zi
-        run: |
-          cargo bench --features full -- --save-baseline pr-baseline || true
+        run: cargo bench --features full -- --save-baseline pr-baseline || true
 
   lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Zi
         uses: actions/checkout@v4
-        with:
-          path: Zi
-
-      - name: Checkout DMSC
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/DMS
-          path: DMS
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -721,41 +574,26 @@ jobs:
           components: rustfmt, clippy
 
       - name: Check formatting
-        working-directory: Zi
-        run: |
-          cargo fmt -- --check || true
+        run: cargo fmt -- --check || true
 
       - name: Run clippy
-        working-directory: Zi
-        run: |
-          cargo clippy --features full -- -D warnings || true
+        run: cargo clippy --features full -- -D warnings || true
 
   docs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Zi
         uses: actions/checkout@v4
-        with:
-          path: Zi
-
-      - name: Checkout DMSC
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/DMS
-          path: DMS
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build documentation
-        working-directory: Zi
-        run: |
-          cargo doc --features full --no-deps || true
+        run: cargo doc --features full --no-deps || true
 
       - name: Upload docs
         uses: actions/upload-artifact@v4
         with:
           name: zi-docs
-          path: Zi/target/doc
+          path: target/doc
           retention-days: 7
