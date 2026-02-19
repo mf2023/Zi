@@ -1,4 +1,4 @@
-//! Copyright © 2025 Wenze Wei. All Rights Reserved.
+//! Copyright © 2025-2026 Wenze Wei. All Rights Reserved.
 //!
 //! This file is part of Zi.
 //! The Zi project belongs to the Dunimd project team.
@@ -18,6 +18,7 @@
 pub mod runtime;
 pub(crate) mod operator_registry;
 pub(crate) mod plugin_package;
+pub mod plugin;
 
 pub use runtime::{
     ZiCDataVisibility,
@@ -33,3 +34,7 @@ pub use runtime::{
 
 pub use operator_registry::{ZiCOperatorRegistry, ZiFOperatorFactory};
 pub use plugin_package::ZiFLoadPluginDescriptorFromPath;
+pub use plugin::{
+    ZiCPlugin, ZiCPluginInstance, ZiCPluginManifest, ZiCPluginRegistry,
+    ZiCPluginLifecycleManager, ZiCPluginApi, ZI_PLUGIN_ABI_VERSION,
+};

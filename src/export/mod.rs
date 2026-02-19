@@ -1,4 +1,4 @@
-//! Copyright © 2025 Wenze Wei. All Rights Reserved.
+//! Copyright © 2025-2026 Wenze Wei. All Rights Reserved.
 //!
 //! This file is part of Zi.
 //! The Zi project belongs to the Dunimd project team.
@@ -15,27 +15,8 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use serde_json::Value;
+pub mod writer;
+pub mod manifest;
 
-use crate::log::core::ZiCLogRecord;
-
-pub struct ZiCJsonFormatter;
-
-impl ZiCJsonFormatter {
-    #[allow(non_snake_case)]
-    pub fn ZiFFormat(record: &ZiCLogRecord) -> String {
-        record.ZiFToJson().to_string()
-    }
-}
-
-pub struct ZiCTextFormatter;
-
-impl ZiCTextFormatter {
-    #[allow(non_snake_case)]
-    pub fn ZiFFormat(record: &ZiCLogRecord) -> String {
-        let v: Value = record.ZiFToJson();
-        // Simple human-readable formatting; for now reuse the JSON but could
-        // be made more compact.
-        v.to_string()
-    }
-}
+pub use writer::{ZiCStreamWriter, ZiCWriterConfig};
+pub use manifest::{ZiCManifest, ZiCManifestBuilder};

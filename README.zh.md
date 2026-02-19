@@ -20,281 +20,264 @@
     <img alt="ModelScope" src="https://img.shields.io/badge/ModelScope-Dunimd-1E6CFF?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTQiIGhlaWdodD0iMTQiIHZpZXdCb3g9IjAgMCAxNCAxNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTcuMDA2IDBDMy4xNDIgMCAwIDMuMTQyIDAgNy4wMDZTMy4xNDIgMTQuMDEyIDcuMDA2IDE0LjAxMkMxMC44NyAxNC4wMTIgMTQuMDEyIDEwLjg3IDE0LjAxMiA3LjAwNkMxNC4wMTIgMy4xNDIgMTAuODcgMCA3LjAwNiAwWiIgZmlsbD0iIzFFNkNGRiIvPgo8L3N2Zz4K"/>
 </a>
 
-基于 Rust 构建的高性能数据处理引擎，专为现代机器学习工作流设计。Zi 提供统一的数据质量评估、清洗、转换、采样与增强框架，具有卓越的速度和可靠性。
+**统一的数据质量评估、清洗、转换、采样与增强框架。**
 
 </div>
 
-## 🎯 项目概述
+<h2 align="center">🏗️ 核心架构</h2>
 
-Zi 是一个基于 Rust 的数据处理库，实现了数据转换和质量评估的管道架构。该项目专注于提供类型安全、高效且可扩展的数据处理操作框架。
+### 📐 模块化设计
 
-## 🏗️ 架构设计
+Zi 采用针对数据处理工作流优化的模块化架构：
 
-### 核心组件
+<div align="center">
 
-- **管道引擎**：通过可配置算子进行数据的顺序处理
-- **算子框架**：基于 trait 的类型安全算子系统
-- **记录处理**：支持元数据的 JSON 数据记录
-- **插件系统**：可选地通过共享库动态加载自定义算子
+| 模块 | 描述 |
+|:--------|:-------------|
+| **pipeline** | 通过可配置算子进行顺序处理 |
+| **dag** | 基于 DAG 的执行，支持拓扑排序实现并行优化 |
+| **operator** | 基于 trait 的类型安全算子系统 |
+| **operators** | 算子实现（过滤、质量、语言等） |
+| **cache** | 内容寻址缓存，支持三哈希（数据/代码/环境） |
+| **monitor** | 运行时指标收集和可配置的质量阈值 |
+| **py** | 基于 PyO3 的 Python 绑定 |
+| **io** | I/O 支持（JSONL、CSV、Parquet、Arrow） |
+| **record** | 数据记录类型和管理 |
+| **orbit** | 用于动态加载算子的插件系统 |
+| **distributed** | 分布式处理支持 |
+| **metrics** | 质量指标计算 |
+| **log** | 结构化日志子系统 |
+| **errors** | 错误类型和处理 |
 
-### 命名约定
+</div>
 
-为保持公共 API 一致性，Zi 遵循严格的命名规则：
+### 🚀 核心特性
 
-- 公共结构体 / 枚举 / Trait 统一使用 `ZiC*` 前缀（如 `ZiCRecord`、`ZiCPipeline`）。
-- 公共函数及构造器统一使用 `ZiF*` 前缀（如 `ZiFNew`、`ZiFLoadJsonl`）。
-- 内部帮助函数统一使用 `_` 前缀。
+#### 🔍 管道处理
+- 通过可配置算子进行顺序处理
+- 基于 DAG 的执行，支持拓扑排序
+- 使用三哈希的内容寻址缓存
+- 支持增量处理
 
-本文档中的示例均已按照实际代码的命名约定更新，确保开箱即用。
+#### 📊 质量评估
+- 多指标文本质量评分（ASCII 比例、非打印字符、重复度）
+- 使用内置词典的毒性检测
+- 基于脚本分析的语言检测（en、zh、ar、ru）
+- 可配置的质量阈值和过滤
 
-### 算子类别
+#### 🔧 数据转换
+- 丰富的过滤算子（等于、包含、正则、范围等）
+- 元数据丰富和操作
+- 支持自定义模式的 PII 编辑
+- 文本规范化和标准化
 
-基于实际代码库，Zi 支持以下算子类别：
+#### 📝 去重
+- 基于 SimHash 的近重复检测
+- 基于 MinHash 的相似度估计
+- 支持语义去重
 
-#### 1. 过滤算子 (`filter.*`)
-- `filter.equals` - 字段相等过滤
-- `filter.not_equals` - 字段不等过滤
-- `filter.any` - 任意字段匹配值
-- `filter.in` - 值包含过滤
-- `filter.not_in` - 值排除过滤
-- `filter.exists` - 字段存在检查
-- `filter.not_exists` - 字段不存在检查
-- `filter.contains` - 字符串包含过滤
-- `filter.contains_all` - 多字符串包含
-- `filter.contains_any` - 任意字符串包含
-- `filter.contains_none` - 字符串排除过滤
-- `filter.length_range` - 文本长度过滤
-- `filter.token_range` - 词元数量过滤
-- `filter.array_contains` - 数组元素过滤
-- `filter.starts_with` - 字符串前缀过滤
-- `filter.ends_with` - 字符串后缀过滤
-- `filter.regex` - 正则表达式过滤
-- `filter.is_null` - 空值过滤
-- `filter.greater_than` - 数值大于过滤
-- `filter.less_than` - 数值小于过滤
-- `filter.between` - 数值范围过滤
-- `filter.range` - 数值范围过滤（替代）
+#### 🎲 采样与增强
+- 随机采样用于数据集缩减
+- Top-k 采样用于质量选择
+- 基于同义词的文本增强
+- 噪声注入用于数据多样性
 
-#### 2. 质量算子 (`quality.*`)
-- `quality.score` - 基于 ASCII 比例、非打印字符和重复的文本质量评分
-- `quality.filter` - 质量阈值过滤
-- `quality.toxicity` - 使用内置词典的毒性检测
+<h2 align="center">⚡ 快速开始</h2>
 
-#### 3. 语言算子 (`lang.*`)
-- `lang.detect` - 基于脚本分析的语言检测（en、zh、ar、ru）
-- `lang.confidence` - 语言置信度评分
-
-#### 4. 元数据算子 (`metadata.*`)
-- `metadata.enrich` - 添加元数据字段
-- `metadata.rename` - 重命名元数据字段
-- `metadata.remove` - 移除元数据字段
-- `metadata.copy` - 复制元数据字段
-- `metadata.require` - 要求元数据字段
-- `metadata.extract` - 提取值到元数据
-- `metadata.keep` - 仅保留指定元数据字段
-
-#### 5. 限制算子 (`limit`)
-- `limit` - 记录数量限制
-
-#### 6. 去重算子 (`dedup.*`)
-- `dedup.simhash` - 基于 SimHash 的去重
-- `dedup.minhash` - 基于 MinHash 的去重
-- `dedup.semantic` - 语义去重
-
-#### 7. PII 算子 (`pii.*`)
-- `pii.redact` - 支持自定义模式的 PII 编辑
-
-#### 8. 转换算子 (`transform.*`)
-- `transform.normalize` - 文本规范化
-
-#### 9. 采样算子 (`sample.*`)
-- `sample.random` - 随机采样
-- `sample.top` - Top-k 采样
-
-#### 10. 增强算子 (`augment.*`)
-- `augment.synonym` - 基于同义词的文本增强
-- `augment.noise` - 噪声注入增强
-
-## 🚀 快速开始
-
-### Rust 使用
+### Rust
 
 ```rust
 use serde_json::json;
 use Zi::pipeline::ZiCPipelineBuilder;
 use Zi::record::ZiCRecord;
 
-// 创建示例数据
 let records = vec![
     ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "Hello world"})),
     ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "你好世界"})),
 ];
 
-// 定义算子步骤（serde_json::Value 切片）
 let steps = [
-    json!({
-        "operator": "lang.detect",
-        "config": {"path": "payload.text", "key": "language"}
-    }),
-    json!({
-        "operator": "quality.score",
-        "config": {"path": "payload.text", "key": "quality_score"}
-    }),
-    json!({
-        "operator": "quality.filter",
-        "config": {"key": "quality_score", "min": 0.5}
-    }),
+    json!({"operator": "lang.detect", "config": {"path": "payload.text"}}),
+    json!({"operator": "quality.score", "config": {"path": "payload.text"}}),
+    json!({"operator": "quality.filter", "config": {"min": 0.5}}),
 ];
 
-// 构建处理管道
 let pipeline = ZiCPipelineBuilder::with_defaults()
     .build_from_config(&steps)
     .expect("合法的管道配置");
 
-// 处理数据
-let processed = pipeline
-    .run(records)
-    .expect("管道执行成功");
+pipeline.run(records).expect("管道执行成功");
 ```
 
-### 配置格式
+### Python
 
-算子使用 JSON 配置，结构如下：
+```python
+import zi_core
+
+# 工具函数
+zi_core.compute_simhash("hello world")
+zi_core.detect_language("hola")        # 返回 (语言, 置信度)
+zi_core.redact_pii("email: test@example.com")
+zi_core.normalize_text("  Hello   WORLD  ")
+zi_core.quality_score("高质量文本")
+zi_core.toxicity_score("不良内容")
+zi_core.generate_prometheus_metrics()  # 返回 Prometheus 格式字符串
+zi_core.version_info()                 # 返回包含版本信息的字典
+```
+
+<h2 align="center">🔧 配置</h2>
+
+### 配置格式
 
 ```json
 [
   {
     "operator": "operator.name",
-    "config": {
-      // 算子特定配置
-    }
+    "config": { "path": "payload.text", "key": "field_name" }
   }
 ]
 ```
 
 ### 字段路径语法
 
-字段路径使用点表示法导航 JSON 结构：
-- `payload.text` - 访问有效负载中的文本字段
-- `metadata.field` - 访问元数据中的字段
-- `payload.nested.field` - 访问嵌套字段
+- `payload.text` — 访问 payload 字段
+- `metadata.field` — 访问元数据字段
+- `payload.nested.field` — 访问嵌套字段
 
-## 📊 性能特性
+### 特性标志
 
-Zi 使用 Rust 构建以获得最佳性能：
+```toml
+[features]
+default = ["full"]
+full = ["parquet", "csv", "parallel"]
+parquet = ["arrow2/io_parquet"]
+csv = ["arrow2/io_csv", "dep:csv"]
+parallel = ["rayon"]
+pyo3 = ["pyo3/extension-module"]
+```
 
-- **零拷贝操作**（可能情况下）
-- **内存安全处理** 使用 Rust 所有权系统
-- **高效 JSON 处理** 使用 serde_json
-- **流式支持** 用于大数据集
-- **流式处理** 支持大规模数据集
-
-## 🏗️ 从源码构建
+<h2 align="center">🧪 安装与环境</h2>
 
 ### 前置要求
-- Rust 1.70+
-- Cargo
 
-### 构建命令
+- **Rust**: 1.70+
+- **Cargo**: 1.70+
+- **平台**: Linux、macOS、Windows
+
+### 快速安装
+
+在项目的 `Cargo.toml` 中添加 Zi：
+
+```toml
+[dependencies]
+zi = { git = "https://github.com/mf2023/Zi" }
+```
+
+或使用 cargo add：
+
 ```bash
-# 克隆仓库
-git clone https://github.com/mf2023/Zi.git
-cd Zi
+cargo add zi --git https://github.com/mf2023/Zi
+```
 
-# 发布模式构建
+### 构建
+
+```bash
+# 默认（完整功能）
 cargo build --release
 
-# 运行测试
-cargo test
+# 显式完整功能
+cargo build --release --features full
 
-# 运行基准测试
+# 包含 Python 绑定
+cargo build --release --features pyo3
+
+cargo test
 cargo bench
 ```
 
-## 📁 项目结构
+<h2 align="center">🛠️ 插件系统</h2>
 
-```
-src/
-├── lib.rs              # 库入口点
-├── errors.rs           # 错误处理类型
-├── io.rs               # I/O 工具
-├── metrics.rs          # 质量指标
-├── operator.rs         # 核心算子 trait
-├── pipeline.rs         # 管道引擎
-├── record.rs           # 数据记录类型
-└── operators/          # 算子实现
-    ├── augment.rs      # 数据增强算子
-    ├── dedup.rs        # 去重算子
-    ├── filter.rs       # 过滤算子
-    ├── lang.rs         # 语言处理算子
-    ├── limit.rs        # 限制算子
-    ├── metadata.rs     # 元数据算子
-    ├── mod.rs          # 算子模块
-    ├── pii.rs          # PII 处理算子
-    ├── quality.rs      # 质量评估算子
-    ├── sample.rs       # 采样算子
-    └── transform.rs    # 文本转换算子
-```
+### 插件使用
 
-## 🔧 插件系统
-
-Zi 支持通过共享库动态加载自定义算子：
+通过共享库动态加载算子：
 
 ```rust
 let mut builder = ZiCPipelineBuilder::with_defaults();
 builder.load_plugin("path/to/plugin.so")?;
 ```
 
-插件必须实现 `zi_register_operators` 函数并向构建器注册其算子。
+插件必须实现 `zi_register_operators` 函数。
 
-## 🎯 使用场景
+<h2 align="center">🔒 版本管理</h2>
 
-### 数据质量评估
-- 基于多指标的文本质量评分
-- 语言检测和置信度评分
-- 内容审核的毒性检测
+### 三哈希版本控制
 
-### 数据过滤
-- 基于字段值的复杂过滤
-- 正则表达式匹配
-- 基于范围的数值过滤
+Zi 使用三哈希版本控制实现可重复处理：
 
-### 数据转换
-- 元数据丰富和操作
-- 文本规范化
-- PII 编辑
+- **数据哈希** — 输入数据哈希
+- **代码哈希** — 算子代码哈希
+- **环境哈希** — 执行环境哈希
 
-### 数据去重
-- 基于 SimHash 的近重复检测
-- 基于 MinHash 的相似性检测
-- 语义去重
+这实现了精确的数据血缘追踪和结果精确重现。
 
-## 🔮 未来开发
+<h2 align="center">❓ 常见问题</h2>
 
-### 计划功能
-- 超越基本脚本检测的额外语言支持
-- 高级质量指标
-- 基于机器学习的算子
-- 分布式处理支持
-- 管道配置的 Web UI
+**Q: 如何添加新算子？**
+A: 实现 `ZiCOperator` trait 并通过算子注册表注册。
 
-## 📄 许可证
+**Q: 如何启用并行执行？**
+A: 启用 `parallel` 特性标志并配置 DAG 调度器进行并行执行。
 
-本项目采用 Apache License 2.0 许可 — 详见 [LICENSE](LICENSE)。
+**Q: 如何配置质量门控？**
+A: 在管道配置的 `monitor` 部分设置质量阈值。
 
----
+**Q: 如何使用内容寻址缓存？**
+A: 在管道配置中启用缓存，Zi 基于三哈希自动处理缓存。
 
-## 🌏 社区与引用
-- 欢迎提交问题与拉取请求！
-- GitHub: https://github.com/mf2023/Zi.git
-- Gitee: https://gitee.com/dunimd/zi.git
+**Q: 如何使用 Python 扩展算子？**
+A: 使用 PyO3 绑定创建与管道集成的自定义算子。
 
-## 🙏 致谢
+<h2 align="center">🌏 社区</h2>
 
-使用优秀的 Rust 生态系统工具构建：
-- [Serde](https://serde.rs/) 用于 JSON 处理
-- [Regex](https://docs.rs/regex/) 用于模式匹配
-- [Arrow2](https://github.com/jorgecarleitao/arrow2) 用于列式数据处理
-- [Libloading](https://docs.rs/libloading/) 用于插件支持
+- GitHub: https://github.com/mf2023/Zi
+- Gitee: https://gitee.com/dunimd/zi
 
-<h3 align="center">直觉导航数据深处 · 共情赋予智能形态</h3>
+<div align="center">
+
+## 📄 许可证与开源协议
+
+### 🏛️ 项目许可证
+
+<p align="center">
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="Apache License 2.0">
+  </a>
+</p>
+
+本项目使用 **Apache License 2.0** 开源协议，详见 [LICENSE](LICENSE) 文件。
+
+### 📋 依赖包开源协议
+
+<div align="center">
+
+| 📦 包 | 📜 许可证 |
+|:-----------|:-----------|
+| serde | Apache 2.0 / MIT |
+| serde_json | MIT |
+| regex | MIT |
+| rayon | Apache 2.0 / MIT |
+| pyo3 | Apache 2.0 / MIT |
+| arrow2 | Apache 2.0 / MIT |
+| csv | MIT |
+| simhash | MIT |
+| once_cell | MIT / Apache 2.0 |
+| tempfile | MIT / Apache 2.0 |
+| dashmap | MIT |
+| tracing | MIT |
+| thiserror | MIT |
+| hex | MIT / Apache 2.0 |
+| base64 | MIT |
+
+</div>
+
+</div>

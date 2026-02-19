@@ -1,4 +1,4 @@
-//! Copyright © 2025 Wenze Wei. All Rights Reserved.
+//! Copyright © 2025-2026 Wenze Wei. All Rights Reserved.
 //!
 //! This file is part of Zi.
 //! The Zi project belongs to the Dunimd project team.
@@ -15,16 +15,10 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-pub mod core;
-pub mod context;
-pub mod config;
-pub mod handlers;
-pub mod formatters;
-pub mod analytics;
-pub mod security;
+pub mod synthesis;
+pub mod annotation;
+pub mod augmentation;
 
-pub use core::{ZiCLogLevel, ZiCLogRecord, ZiCLogger};
-pub use context::ZiCLogContext;
-pub use config::{ZiCLogConfig, ZiCLogConfigBuilder};
-pub use analytics::{ZiCLogAnalysisResult, ZiCLogAnalyzer};
-pub use security::ZiCSecurityAuditor;
+pub use synthesis::{ZiCSynthesizer, ZiCSynthesisConfig};
+pub use annotation::{ZiCAnnotator, ZiCAnnotationConfig};
+pub use augmentation::{ZiCAugmenter, ZiCAugmentationConfig};

@@ -1,10 +1,10 @@
-# Copyright © 2025 Wenze Wei. All Rights Reserved.
+# Copyright © 2025-2026 Wenze Wei. All Rights Reserved.
 #
 # This file is part of Zi.
 # The Zi project belongs to the Dunimd project team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
-# You may not use this file except in compliance with the License.
+# you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
@@ -19,7 +19,7 @@
 name = "Zi"
 version = "0.1.0"
 edition = "2021"
-description = "Core library for the Zi data processing engine."
+description = "Unified Data Quality Assessment, Cleaning, Transformation, Sampling, and Augmentation Framework"
 license = "Apache-2.0"
 
 [lib]
@@ -27,16 +27,69 @@ name = "Zi"
 path = "src/lib.rs"
 doctest = false
 
+[features]
+default = ["full"]
+full = ["parquet", "csv", "parallel", "domain", "distributed", "plugin"]
+parquet = ["arrow2/io_parquet"]
+csv = ["arrow2/io_csv", "dep:csv"]
+parallel = ["rayon"]
+domain = []
+distributed = []
+plugin = ["wasmtime"]
+pyo3 = ["dep:pyo3", "pyo3/extension-module"]
+edge = []
+
 [dependencies]
+# DMSC Infrastructure
+dmsc = { path = "../DMS", features = [
+    "cache",
+    "observability",
+] }
+
+# Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-thiserror = "1.0"
-log = "0.4"
+serde_yaml = "0.9"
+
+# Async Runtime
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# Data Processing
+arrow2 = { version = "0.17", default-features = false, features = ["serde_json"] }
+rayon = { version = "1.10", optional = true }
+csv = { version = "1.3", optional = true }
+
+# Hashing
+blake3 = "1.0"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+
+# Text Processing
 regex = "1.10"
-csv = "1.3"
-arrow2 = { version = "0.17", features = ["io_parquet", "io_csv", "serde_json"] }
-rand = { version = "0.8", features = ["small_rng"] }
+
+# Plugin System
+wasmtime = { version = "15", optional = true }
 libloading = "0.8"
+zip = "0.6"
+
+# Error Handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Utilities
+log = "0.4"
+num_cpus = "1.16"
+rand = { version = "0.8", features = ["small_rng"] }
+ring = "0.17"
+base64 = "0.22"
+chrono = "0.4"
+hex = "0.4"
+
+# Python Bindings
+pyo3 = { version = "0.27", optional = true }
 
 [dev-dependencies]
 tempfile = "3.10"
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1.4"

@@ -20,280 +20,264 @@ English | [简体中文](README.zh.md)
     <img alt="ModelScope" src="https://img.shields.io/badge/ModelScope-Dunimd-1E6CFF?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTQiIGhlaWdodD0iMTQiIHZpZXdCb3g9IjAgMCAxNCAxNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTcuMDA2IDBDMy4xNDIgMCAwIDMuMTQyIDAgNy4wMDZTMy4xNDIgMTQuMDEyIDcuMDA2IDE0LjAxMkMxMC44NyAxNC4wMTIgMTQuMDEyIDEwLjg3IDE0LjAxMiA3LjAwNkMxNC4wMTIgMy4xNDIgMTAuODcgMCA3LjAwNiAwWiIgZmlsbD0iIzFFNkNGRiIvPgo8L3N2Zz4K"/>
 </a>
 
-A high-performance data processing engine built with Rust, designed for modern machine learning workflows. Zi provides a unified framework for data quality assessment, cleaning, transformation, sampling, and augmentation with exceptional speed and reliability.
+**Unified Data Quality Assessment, Cleaning, Transformation, Sampling, and Augmentation Framework.**
 
 </div>
 
-## 🎯 Project Overview
+<h2 align="center">🏗️ Core Architecture</h2>
 
-Zi is a Rust-based data processing library that implements a pipeline architecture for data transformation and quality assessment. The project focuses on providing a type-safe, efficient, and extensible framework for data processing operations.
+### 📐 Modular Design
 
-## 🏗️ Architecture
+Zi adopts a modular architecture optimized for data processing workflows:
 
-### Core Components
+<div align="center">
 
-- **Pipeline Engine**: Sequential processing of data through configurable operators
-- **Operator Framework**: Type-safe trait-based operator system
-- **Record Processing**: JSON-based data records with metadata support
-- **Plugin System**: Dynamic loading of custom operators via shared libraries (optional)
+| Module | Description |
+|:--------|:-------------|
+| **pipeline** | Sequential processing through configurable operators |
+| **dag** | DAG-based execution with topological sorting for parallel optimization |
+| **operator** | Type-safe trait-based operator system |
+| **operators** | Operator implementations (filter, quality, lang, etc.) |
+| **cache** | Content-addressable cache with triple hashing (data/code/environment) |
+| **monitor** | Runtime metrics collection and configurable quality thresholds |
+| **py** | PyO3-based Python bindings for Python ecosystems |
+| **io** | I/O support (JSONL, CSV, Parquet, Arrow) |
+| **record** | Data record types and management |
+| **orbit** | Plugin system for dynamic operator loading |
+| **distributed** | Distributed processing support |
+| **metrics** | Quality metrics computation |
+| **log** | Structured logging subsystem |
+| **errors** | Error types and handling |
 
-### Naming Convention
+</div>
 
-To keep the public API consistent, Zi follows a strict naming rule:
+### 🚀 Key Features
 
-- Public structs/enums/traits use the `ZiC*` prefix (e.g. `ZiCRecord`, `ZiCPipeline`).
-- Public functions and associated constructors use the `ZiF*` prefix (e.g. `ZiFNew`, `ZiFLoadJsonl`).
-- Internal helpers are prefixed with `_`.
+#### 🔍 Pipeline Processing
+- Sequential processing through configurable operators
+- DAG-based execution with topological sorting
+- Content-addressable caching with triple hashing
+- Incremental processing support
 
-Every example in this README adopts the same convention so that the snippets match the actual codebase.
+#### 📊 Quality Assessment
+- Multi-metric text quality scoring (ASCII ratio, non-printable chars, repetition)
+- Toxicity detection using built-in lexicon
+- Language detection (en, zh, ar, ru) based on script analysis
+- Configurable quality thresholds and filtering
 
-### Operator Categories
+#### 🔧 Data Transformation
+- Rich filtering operators (equals, contains, regex, range, etc.)
+- Metadata enrichment and manipulation
+- PII redaction with custom patterns
+- Text normalization and standardization
 
-Based on the actual codebase, Zi supports the following operator categories:
+#### 📝 Deduplication
+- SimHash-based near-duplicate detection
+- MinHash-based similarity estimation
+- Semantic deduplication support
 
-#### 1. Filter Operators (`filter.*`)
-- `filter.equals` - Field equality filtering
-- `filter.not_equals` - Field inequality filtering  
-- `filter.any` - Any field matching value
-- `filter.in` - Value inclusion filtering
-- `filter.not_in` - Value exclusion filtering
-- `filter.exists` - Field existence checking
-- `filter.not_exists` - Field non-existence checking
-- `filter.contains` - String containment filtering
-- `filter.contains_all` - Multiple string containment
-- `filter.contains_any` - Any string containment
-- `filter.contains_none` - String exclusion filtering
-- `filter.length_range` - Text length filtering
-- `filter.token_range` - Token count filtering
-- `filter.array_contains` - Array element filtering
-- `filter.starts_with` - String prefix filtering
-- `filter.ends_with` - String suffix filtering
-- `filter.regex` - Regular expression filtering
-- `filter.is_null` - Null value filtering
-- `filter.greater_than` - Numeric greater than filtering
-- `filter.less_than` - Numeric less than filtering
-- `filter.between` - Numeric range filtering
-- `filter.range` - Numeric range filtering (alternative)
+#### 🎲 Sampling & Augmentation
+- Random sampling for dataset reduction
+- Top-k sampling for quality selection
+- Synonym-based text augmentation
+- Noise injection for data diversity
 
-#### 2. Quality Operators (`quality.*`)
-- `quality.score` - Text quality scoring based on ASCII ratio, non-printable characters, and repetition
-- `quality.filter` - Quality threshold filtering
-- `quality.toxicity` - Toxicity detection using built-in lexicon
+<h2 align="center">⚡ Quick Start</h2>
 
-#### 3. Language Operators (`lang.*`)
-- `lang.detect` - Language detection (en, zh, ar, ru) based on script analysis
-- `lang.confidence` - Language confidence scoring
-
-#### 4. Metadata Operators (`metadata.*`)
-- `metadata.enrich` - Add metadata fields
-- `metadata.rename` - Rename metadata fields
-- `metadata.remove` - Remove metadata fields
-- `metadata.copy` - Copy metadata fields
-- `metadata.require` - Require metadata fields
-- `metadata.extract` - Extract values to metadata
-- `metadata.keep` - Keep only specified metadata fields
-
-#### 5. Limit Operators (`limit`)
-- `limit` - Record count limiting
-
-#### 6. Dedup Operators (`dedup.*`)
-- `dedup.simhash` - SimHash-based deduplication
-- `dedup.minhash` - MinHash-based deduplication
-- `dedup.semantic` - Semantic deduplication
-
-#### 7. PII Operators (`pii.*`)
-- `pii.redact` - PII redaction with custom patterns
-
-#### 8. Transform Operators (`transform.*`)
-- `transform.normalize` - Text normalization
-
-#### 9. Sample Operators (`sample.*`)
-- `sample.random` - Random sampling
-- `sample.top` - Top-k sampling
-
-#### 10. Augment Operators (`augment.*`)
-- `augment.synonym` - Synonym-based text augmentation
-- `augment.noise` - Noise injection augmentation
-
-## 🚀 Quick Start
-
-### Rust Usage
+### Rust
 
 ```rust
 use serde_json::json;
 use Zi::pipeline::ZiCPipelineBuilder;
 use Zi::record::ZiCRecord;
 
-// Create sample data
 let records = vec![
     ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "Hello world"})),
     ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "你好世界"})),
 ];
 
-// Define pipeline steps (slice of serde_json::Value)
 let steps = [
-    json!({
-        "operator": "lang.detect",
-        "config": {"path": "payload.text", "key": "language"}
-    }),
-    json!({
-        "operator": "quality.score",
-        "config": {"path": "payload.text", "key": "quality_score"}
-    }),
-    json!({
-        "operator": "quality.filter",
-        "config": {"key": "quality_score", "min": 0.5}
-    }),
+    json!({"operator": "lang.detect", "config": {"path": "payload.text"}}),
+    json!({"operator": "quality.score", "config": {"path": "payload.text"}}),
+    json!({"operator": "quality.filter", "config": {"min": 0.5}}),
 ];
 
-// Build processing pipeline
 let pipeline = ZiCPipelineBuilder::with_defaults()
     .build_from_config(&steps)
-    .expect("valid pipeline definition");
+    .expect("valid pipeline");
 
-// Process data
-let processed = pipeline
-    .run(records)
-    .expect("pipeline execution succeeds");
+pipeline.run(records).expect("execution succeeds");
 ```
 
-### Configuration Format
+### Python
 
-Operators are configured using JSON with the following structure:
+```python
+import zi_core
+
+# Utility functions
+zi_core.compute_simhash("hello world")
+zi_core.detect_language("hola")        # returns (lang, confidence)
+zi_core.redact_pii("email: test@example.com")
+zi_core.normalize_text("  Hello   WORLD  ")
+zi_core.quality_score("quality text")
+zi_core.toxicity_score("bad content")
+zi_core.generate_prometheus_metrics()  # returns Prometheus format string
+zi_core.version_info()                 # returns dict with version info
+```
+
+<h2 align="center">🔧 Configuration</h2>
+
+### Configuration Format
 
 ```json
 [
   {
     "operator": "operator.name",
-    "config": {
-      // Operator-specific configuration
-    }
+    "config": { "path": "payload.text", "key": "field_name" }
   }
 ]
 ```
 
 ### Field Path Syntax
 
-Field paths use dot notation to navigate JSON structures:
-- `payload.text` - Access text field in payload
-- `metadata.field` - Access field in metadata
-- `payload.nested.field` - Access nested fields
+- `payload.text` — Access payload field
+- `metadata.field` — Access metadata field
+- `payload.nested.field` — Access nested field
 
-## 📊 Performance
+### Feature Flags
 
-Zi is built with Rust for maximum performance:
+```toml
+[features]
+default = ["full"]
+full = ["parquet", "csv", "parallel"]
+parquet = ["arrow2/io_parquet"]
+csv = ["arrow2/io_csv", "dep:csv"]
+parallel = ["rayon"]
+pyo3 = ["pyo3/extension-module"]
+```
 
-- **Zero-copy operations** where possible
-- **Memory-safe processing** with Rust's ownership system
-- **Efficient JSON processing** with serde_json
-- **Streaming support** for large datasets
-
-## 🏗️ Building from Source
+<h2 align="center">🧪 Installation & Environment</h2>
 
 ### Prerequisites
-- Rust 1.70+
-- Cargo
 
-### Build Commands
+- **Rust**: 1.70+
+- **Cargo**: 1.70+
+- **Platforms**: Linux, macOS, Windows
+
+### Quick Setup
+
+Add Zi to your project's `Cargo.toml`:
+
+```toml
+[dependencies]
+zi = { git = "https://github.com/mf2023/Zi" }
+```
+
+Or use cargo add:
+
 ```bash
-# Clone the repository
-git clone https://github.com/mf2023/Zi.git
-cd Zi
+cargo add zi --git https://github.com/mf2023/Zi
+```
 
-# Build in release mode
+### Build
+
+```bash
+# Default (full features)
 cargo build --release
 
-# Run tests
-cargo test
+# Explicit full features
+cargo build --release --features full
 
-# Run benchmarks
+# With Python bindings
+cargo build --release --features pyo3
+
+cargo test
 cargo bench
 ```
 
-## 📁 Project Structure
+<h2 align="center">🛠️ Plugin System</h2>
 
-```
-src/
-├── lib.rs              # Library entry point
-├── errors.rs           # Error handling types
-├── io.rs               # I/O utilities
-├── metrics.rs          # Quality metrics
-├── operator.rs         # Core operator traits
-├── pipeline.rs         # Pipeline engine
-├── record.rs           # Data record types
-└── operators/          # Operator implementations
-    ├── augment.rs      # Data augmentation operators
-    ├── dedup.rs        # Deduplication operators
-    ├── filter.rs       # Filtering operators
-    ├── lang.rs         # Language processing operators
-    ├── limit.rs        # Limiting operators
-    ├── metadata.rs     # Metadata operators
-    ├── mod.rs          # Operators module
-    ├── pii.rs          # PII processing operators
-    ├── quality.rs      # Quality assessment operators
-    ├── sample.rs       # Sampling operators
-    └── transform.rs    # Text transformation operators
-```
+### Plugin Usage
 
-## 🔧 Plugin System
-
-Zi supports dynamic loading of custom operators through shared libraries:
+Dynamic operator loading via shared libraries:
 
 ```rust
 let mut builder = ZiCPipelineBuilder::with_defaults();
 builder.load_plugin("path/to/plugin.so")?;
 ```
 
-Plugins must implement the `zi_register_operators` function and register their operators with the builder.
+Plugins must implement `zi_register_operators`.
 
-## 🎯 Use Cases
+<h2 align="center">🔒 Version Management</h2>
 
-### Data Quality Assessment
-- Text quality scoring based on multiple metrics
-- Language detection and confidence scoring
-- Toxicity detection for content moderation
+### Triple-Hash Versioning
 
-### Data Filtering
-- Complex filtering based on field values
-- Regular expression matching
-- Range-based numeric filtering
+Zi uses triple-hash versioning for reproducible processing:
 
-### Data Transformation
-- Metadata enrichment and manipulation
-- Text normalization
-- PII redaction
+- **Data Hash** — Input data hash
+- **Code Hash** — Operator code hash
+- **Environment Hash** — Execution environment hash
 
-### Data Deduplication
-- SimHash-based near-duplicate detection
-- MinHash-based similarity detection
-- Semantic deduplication
+This enables precise data lineage tracking and exact result reproduction.
 
-## 🔮 Future Development
+<h2 align="center">❓ Frequently Asked Questions</h2>
 
-### Planned Features
-- Additional language support beyond basic script detection
-- Advanced quality metrics
-- Machine learning-based operators
-- Distributed processing support
-- Web UI for pipeline configuration
+**Q: How to add a new operator?**
+A: Implement the `ZiCOperator` trait and register it via the operator registry.
 
-## 📄 License
+**Q: How to enable parallel execution?**
+A: Enable the `parallel` feature flag and configure DAG scheduler for parallel execution.
 
-This project is licensed under the Apache License 2.0 — see [LICENSE](LICENSE).
+**Q: How to configure quality gates?**
+A: Set quality thresholds in the pipeline configuration under `monitor` section.
 
----
+**Q: How to use content-addressable caching?**
+A: Enable cache in pipeline configuration, Zi automatically handles caching based on triple hashing.
 
-## 🌏 Community & Citation
-- Issues and pull requests are welcome!
-- GitHub: https://github.com/mf2023/Zi.git
-- Gitee: https://gitee.com/dunimd/zi.git
+**Q: How to extend with Python operators?**
+A: Use PyO3 bindings to create custom operators that integrate with the pipeline.
 
-## 🙏 Acknowledgments
+<h2 align="center">🌏 Community</h2>
 
-Built with excellent Rust ecosystem tools:
-- [Serde](https://serde.rs/) for JSON processing
-- [Regex](https://docs.rs/regex/) for pattern matching
-- [Arrow2](https://github.com/jorgecarleitao/arrow2) for columnar data processing
-- [Libloading](https://docs.rs/libloading/) for plugin support
+- GitHub: https://github.com/mf2023/Zi
+- Gitee: https://gitee.com/dunimd/zi
 
-<h3 align="center">Where intuition navigates the depths of data · And empathy gives form to intelligence</h3>
+<div align="center">
+
+## 📄 License & Open Source Agreements
+
+### 🏛️ Project License
+
+<p align="center">
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="Apache License 2.0">
+  </a>
+</p>
+
+This project uses **Apache License 2.0** open source agreement, see [LICENSE](LICENSE) file.
+
+### 📋 Dependency Package Open Source Agreements
+
+<div align="center">
+
+| 📦 Package | 📜 License |
+|:-----------|:-----------|
+| serde | Apache 2.0 / MIT |
+| serde_json | MIT |
+| regex | MIT |
+| rayon | Apache 2.0 / MIT |
+| pyo3 | Apache 2.0 / MIT |
+| arrow2 | Apache 2.0 / MIT |
+| csv | MIT |
+| simhash | MIT |
+| once_cell | MIT / Apache 2.0 |
+| tempfile | MIT / Apache 2.0 |
+| dashmap | MIT |
+| tracing | MIT |
+| thiserror | MIT |
+| hex | MIT / Apache 2.0 |
+| base64 | MIT |
+
+</div>
+
+</div>

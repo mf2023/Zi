@@ -1,4 +1,4 @@
-//! Copyright © 2025 Wenze Wei. All Rights Reserved.
+//! Copyright © 2025-2026 Wenze Wei. All Rights Reserved.
 //!
 //! This file is part of Zi.
 //! The Zi project belongs to the Dunimd project team.
@@ -18,6 +18,7 @@
 use std::io;
 
 use thiserror::Error;
+use zip::result::ZipError;
 
 /// Convience result type used throughout Zi Core.
 pub type Result<T> = std::result::Result<T, ZiError>;
@@ -48,6 +49,10 @@ pub enum ZiError {
     /// Wrapper for serde-style serialization issues.
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),
+
+    /// Errors originating from ZIP file operations.
+    #[error("zip error: {0}")]
+    Zip(#[from] ZipError),
 
     /// Catch-all variant for unexpected situations.
     #[error("internal error: {0}")]

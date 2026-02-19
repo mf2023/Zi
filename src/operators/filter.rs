@@ -1,4 +1,4 @@
-//! Copyright © 2025 Wenze Wei. All Rights Reserved.
+//! Copyright © 2025-2026 Wenze Wei. All Rights Reserved.
 //!
 //! This file is part of Zi.
 //! The Zi project belongs to the Dunimd project team.
@@ -16,7 +16,7 @@
 //! limitations under the License.
 
 use regex::Regex;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::errors::{Result, ZiError};
 use crate::operator::ZiCOperator;

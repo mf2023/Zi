@@ -1,4 +1,4 @@
-//! Copyright © 2025 Wenze Wei. All Rights Reserved.
+//! Copyright © 2025-2026 Wenze Wei. All Rights Reserved.
 //!
 //! This file is part of Zi.
 //! The Zi project belongs to the Dunimd project team.
@@ -24,13 +24,17 @@ use arrow2::array::{Array, MutableArray, MutableUtf8Array, Utf8Array};
 use arrow2::chunk::Chunk;
 use arrow2::datatypes::{DataType, Field, Schema};
 use arrow2::error::Error as ArrowError;
+use serde_json::{Map, Value};
+
+#[cfg(feature = "parquet")]
 use arrow2::io::parquet::read::{infer_schema, read_metadata, FileReader as ParquetFileReader};
+#[cfg(feature = "parquet")]
 use arrow2::io::parquet::write::{
     CompressionOptions, Encoding, FileWriter as ParquetFileWriter, RowGroupIterator, Version,
     WriteOptions,
 };
+#[cfg(feature = "csv")]
 use csv::{ReaderBuilder, WriterBuilder};
-use serde_json::{Map, Value};
 
 use crate::errors::{Result, ZiError};
 use crate::record::{ZiCMetadata, ZiCRecord, ZiCRecordBatch};
