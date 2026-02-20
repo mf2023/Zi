@@ -231,7 +231,7 @@ impl ZiCDSLParser {
 
         let json_value = self.yaml_to_json(&yaml_value);
         
-        let nodes = match json_value {
+        let nodes = match &json_value {
             Value::Object(map) => {
                 if let Some(steps) = map.get("steps") {
                     if let Value::Array(arr) = steps {
@@ -251,7 +251,7 @@ impl ZiCDSLParser {
                 }
             }
             Value::Array(arr) => {
-                self.parse_json_array(&arr, &mut warnings)?
+                self.parse_json_array(arr, &mut warnings)?
             }
             _ => return Err(ZiError::validation("YAML must be array or object")),
         };
@@ -285,7 +285,9 @@ impl ZiCDSLParser {
                 for (k, v) in map {
                     let key = match k {
                         serde_yaml::Value::String(s) => s.clone(),
-                        _ => k.to_string(),
+                        serde_yaml::Value::Number(n) => n.to_string(),
+                        serde_yaml::Value::Bool(b) => b.to_string(),
+                        _ => format!("{:?}", k),
                     };
                     obj.insert(key, self.yaml_to_json(v));
                 }

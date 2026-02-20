@@ -54,7 +54,7 @@ impl ZiContext {
         let cache_config = DMSCCacheConfig {
             enabled: config.cache_enabled,
             default_ttl_secs: config.cache_ttl_secs,
-            max_memory_mb: config.cache_max_memory_mb,
+            max_memory_mb: config.cache_max_memory_mb as u64,
             backend_type: DMSCCacheBackendType::Memory,
             ..Default::default()
         };
@@ -62,7 +62,7 @@ impl ZiContext {
         let cache = Arc::new(RwLock::new(cache_module));
 
         let metrics = Arc::new(DMSCMetricsRegistry::new());
-        let tracer = DMSCTracer::global();
+        let tracer = Arc::new(DMSCTracer::new(1.0));
 
         Ok(Self {
             logger,

@@ -43,9 +43,9 @@ impl ZiCQualityMetrics {
         let total_records = batch.len();
         let mut total_chars = 0usize;
         let mut total_tokens = 0usize;
-        let mut toxicity_sum = 0.0;
-        let mut toxicity_max = 0.0;
-        let mut quality_sum = 0.0;
+        let mut toxicity_sum = 0.0_f64;
+        let mut toxicity_max = 0.0_f64;
+        let mut quality_sum = 0.0_f64;
         let mut empty_count = 0usize;
 
         for record in batch {

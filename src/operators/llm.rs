@@ -16,7 +16,7 @@
 //! limitations under the License.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, Map};
+use serde_json::{Value, Map, json};
 
 use crate::errors::{Result, ZiError};
 use crate::record::{ZiCRecord, ZiCRecordBatch};
@@ -168,6 +168,10 @@ impl ZiCTokenCounter {
 }
 
 impl ZiCOperator for ZiCTokenCounter {
+    fn name(&self) -> &'static str {
+        "llm.token_count"
+    }
+
     fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
         batch.into_iter().map(|record| {
             let text = self.extract_text(&record)?;
@@ -358,6 +362,10 @@ impl ZiCConversationFormatter {
 }
 
 impl ZiCOperator for ZiCConversationFormatter {
+    fn name(&self) -> &'static str {
+        "llm.conversation_format"
+    }
+
     fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
         batch.into_iter().map(|mut record| {
             let conv = self.extract_conversation(&record)?;
@@ -447,16 +455,20 @@ impl ZiCContextLengthFilter {
 }
 
 impl ZiCOperator for ZiCContextLengthFilter {
+    fn name(&self) -> &'static str {
+        "llm.context_length"
+    }
+
     fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
         match &self.config.action {
             ZiCContextLengthAction::Filter => {
-                batch.into_iter()
+                Ok(batch.into_iter()
                     .filter(|record| {
                         let text = self.extract_text(record);
                         let tokens = self.estimate_tokens(&text);
                         tokens >= self.config.min_tokens && tokens <= self.config.max_tokens
                     })
-                    .collect()
+                    .collect())
             }
             ZiCContextLengthAction::Truncate { max_tokens } => {
                 batch.into_iter()
@@ -709,6 +721,10 @@ impl ZiCQAExtractor {
 }
 
 impl ZiCOperator for ZiCQAExtractor {
+    fn name(&self) -> &'static str {
+        "llm.qa_extract"
+    }
+
     fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
         batch.into_iter().map(|mut record| {
             let text = self.extract_text(&record);
@@ -845,6 +861,10 @@ impl ZiCInstructionFormatter {
 }
 
 impl ZiCOperator for ZiCInstructionFormatter {
+    fn name(&self) -> &'static str {
+        "llm.instruction_format"
+    }
+
     fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
         batch.into_iter().map(|mut record| {
             let formatted = self.format_instruction(&record)?;

@@ -56,7 +56,6 @@ impl Default for ZiCReaderConfig {
     }
 }
 
-#[derive(Debug)]
 pub struct ZiCStreamReader {
     config: ZiCReaderConfig,
     detector: ZiCFormatDetector,
@@ -127,7 +126,7 @@ impl ZiCStreamReader {
     fn read_jsonl(&self, path: &Path) -> Result<ZiCRecordBatch> {
         let file = File::open(path)?;
         let file_size = file.metadata().ok().map(|m| m.len() as usize);
-        let reader = self.create_reader(file);
+        let reader = Self::create_reader(file);
         let mut batch = Vec::with_capacity(self.config.batch_size);
         let mut error_count = 0;
         let mut records_read = 0;
@@ -165,7 +164,7 @@ impl ZiCStreamReader {
                 Err(e) => {
                     error_count += 1;
                     if !self.config.skip_errors || error_count > self.config.max_errors {
-                        return Err(ZiError::io(format!("Failed to read line: {}", e)));
+                        return Err(ZiError::validation(format!("Failed to read line: {}", e)));
                     }
                     log::warn!("Skipping unreadable line: {}", e);
                 }
@@ -205,9 +204,13 @@ impl ZiCStreamReader {
     fn read_csv(&self, path: &Path) -> Result<ZiCRecordBatch> {
         let file = File::open(path)?;
         let file_size = file.metadata().ok().map(|m| m.len() as usize);
-        let reader = self.create_reader(file);
+        let reader = Self::create_reader(file);
         let mut csv_reader = csv::Reader::from_reader(reader);
-        let headers: Vec<String> = csv_reader.headers()?.iter().map(|s| s.to_string()).collect();
+        let headers: Vec<String> = csv_reader.headers()
+            .map_err(|e| ZiError::validation(format!("CSV headers error: {}", e)))?
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         
         let mut batch = Vec::with_capacity(self.config.batch_size);
         let mut error_count = 0;
@@ -260,8 +263,7 @@ impl ZiCStreamReader {
 
     #[cfg(feature = "parquet")]
     fn read_parquet_impl(&self, path: &Path) -> Result<ZiCRecordBatch> {
-        use parquet::file::reader::{FileReader, SerializedFileReader};
-        use parquet::record::Row;
+        use parquet::file::reader::{SerializedFileReader, FileReader};
         
         let file = File::open(path)?;
         let reader = SerializedFileReader::new(file)
@@ -270,8 +272,11 @@ impl ZiCStreamReader {
         let mut batch = Vec::with_capacity(self.config.batch_size);
         let mut records_read = 0;
         
-        for row_iter in reader.row_iter() {
-            match row_iter {
+        let iter = reader.get_row_iter(None)
+            .map_err(|e| ZiError::validation(format!("Failed to create row iterator: {}", e)))?;
+        
+        for row in iter {
+            match row {
                 Ok(row) => {
                     let value = self.parquet_row_to_value(&row);
                     batch.push(ZiCRecord::ZiFNew(Some(format!("{}", records_read)), value));
@@ -296,7 +301,7 @@ impl ZiCStreamReader {
     #[cfg(feature = "parquet")]
     fn parquet_row_to_value(&self, row: &parquet::record::Row) -> Value {
         let mut obj = serde_json::Map::new();
-        for (i, field) in row.get_column_iter().enumerate() {
+        for field in row.get_column_iter() {
             let key = field.0.clone();
             let value = self.parquet_field_to_value(field.1);
             obj.insert(key, value);
@@ -326,24 +331,6 @@ impl ZiCStreamReader {
             }
             Field::Str(s) => Value::String(s.to_string()),
             Field::Bytes(b) => Value::String(base64_encode(b.data())),
-            Field::List(list) => {
-                let arr: Vec<Value> = list.elements()
-                    .iter()
-                    .map(|f| self.parquet_field_to_value(f))
-                    .collect();
-                Value::Array(arr)
-            }
-            Field::Map(map) => {
-                let mut obj = serde_json::Map::new();
-                for (k, v) in map.entries() {
-                    let key = match k {
-                        Field::Str(s) => s.to_string(),
-                        _ => format!("{:?}", k),
-                    };
-                    obj.insert(key, self.parquet_field_to_value(v));
-                }
-                Value::Object(obj)
-            }
             Field::Group(group) => {
                 let mut obj = serde_json::Map::new();
                 for (k, v) in group.get_column_iter() {
@@ -355,7 +342,7 @@ impl ZiCStreamReader {
         }
     }
 
-    fn create_reader<R: Read>(&self, reader: R) -> Box<dyn BufRead> {
+    fn create_reader<R: Read + 'static>(reader: R) -> Box<dyn BufRead> {
         Box::new(BufReader::new(reader))
     }
 
@@ -414,18 +401,12 @@ impl<'a> ZiCRecordIterator<'a> {
     fn next_jsonl_batch(&mut self) -> Result<Option<ZiCRecordBatch>> {
         let reader = BufReader::new(&self.file);
         let mut batch = Vec::with_capacity(self.reader.config.batch_size);
-        let mut line_buf = String::new();
 
-        for _ in 0..self.reader.config.batch_size {
-            line_buf.clear();
-            match std::io::BufRead::read_line(&mut reader.line(), &mut line_buf) {
-                Ok(0) => {
-                    self.exhausted = true;
-                    break;
-                }
-                Ok(n) => {
-                    self.bytes_read += n;
-                    let trimmed = line_buf.trim();
+        for line in reader.lines().take(self.reader.config.batch_size) {
+            match line {
+                Ok(text) => {
+                    self.bytes_read += text.len() + 1;
+                    let trimmed = text.trim();
                     if trimmed.is_empty() {
                         continue;
                     }
@@ -454,7 +435,7 @@ impl<'a> ZiCRecordIterator<'a> {
                 Err(e) => {
                     self.error_count += 1;
                     if !self.reader.config.skip_errors {
-                        return Err(ZiError::io(format!("Read error: {}", e)));
+                        return Err(ZiError::validation(format!("Read error: {}", e)));
                     }
                 }
             }

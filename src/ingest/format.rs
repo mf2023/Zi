@@ -212,10 +212,7 @@ impl ZiCFormatDetector {
     fn decompress_gzip(&self, content: &[u8]) -> Vec<u8> {
         use std::io::Read;
         
-        let mut decoder = match flate2::read::GzDecoder::new(content) {
-            Ok(d) => d,
-            Err(_) => return content.to_vec(),
-        };
+        let mut decoder = flate2::read::GzDecoder::new(content);
         
         let mut decompressed = Vec::new();
         if decoder.read_to_end(&mut decompressed).is_ok() {

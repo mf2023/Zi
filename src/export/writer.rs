@@ -58,7 +58,7 @@ impl Default for ZiCWriterConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ZiCWriteStats {
     pub records_written: usize,
     pub bytes_written: usize,
@@ -130,7 +130,8 @@ impl ZiCStreamWriter {
 
         for (i, chunk) in batch.chunks(count).enumerate() {
             let path = self.split_path(base_path, i, num_files);
-            self.write_single(chunk, &path)?;
+            let chunk_vec: ZiCRecordBatch = chunk.to_vec();
+            self.write_single(&chunk_vec, &path)?;
         }
 
         self.stats.records_written = total_records;
@@ -209,7 +210,7 @@ impl ZiCStreamWriter {
             CompressionType::Zstd => {
                 let file = File::create(path)?;
                 let encoder = zstd::Encoder::new(file, 0)
-                    .map_err(|e| ZiError::io(format!("Zstd encoder error: {}", e)))?;
+                    .map_err(|e| ZiError::validation(format!("Zstd encoder error: {}", e)))?;
                 let mut writer = BufWriter::new(encoder);
 
                 match self.config.format {
@@ -256,14 +257,14 @@ impl ZiCStreamWriter {
         
         let mut csv_writer = csv::Writer::from_writer(writer);
         
-        csv_writer.write_record(&headers)?;
+        csv_writer.write_record(&headers).map_err(|e| ZiError::validation(format!("CSV write error: {}", e)))?;
         
         for record in batch {
             let row = self.record_to_row(record, &headers);
-            csv_writer.write_record(&row)?;
+            csv_writer.write_record(&row).map_err(|e| ZiError::validation(format!("CSV write error: {}", e)))?;
         }
         
-        csv_writer.flush()?;
+        csv_writer.flush().map_err(|e| ZiError::validation(format!("CSV flush error: {}", e)))?;
         Ok(())
     }
 
@@ -429,7 +430,10 @@ impl ZiCStreamWriter {
     fn estimate_record_size(&self, record: &ZiCRecord) -> usize {
         let id_size = record.id.as_ref().map(|s| s.len()).unwrap_or(0);
         let payload_size = record.payload.to_string().len();
-        let meta_size = record.metadata.as_ref().map(|m| m.to_string().len()).unwrap_or(0);
+        let meta_size = record.metadata.as_ref()
+            .and_then(|m| serde_json::to_string(m).ok())
+            .map(|s| s.len())
+            .unwrap_or(0);
         id_size + payload_size + meta_size + 64
     }
 

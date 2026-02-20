@@ -199,7 +199,9 @@ impl ZiCProfiler {
         record.id.hash(&mut hasher);
         record.payload.to_string().hash(&mut hasher);
         if let Some(meta) = &record.metadata {
-            meta.to_string().hash(&mut hasher);
+            if let Ok(meta_str) = serde_json::to_string(meta) {
+                meta_str.hash(&mut hasher);
+            }
         }
         hasher.finish()
     }
@@ -329,11 +331,15 @@ impl ZiCProfiler {
 
     fn estimate_record_size(record: &ZiCRecord) -> usize {
         let payload_size = record.payload.to_string().len();
-        let meta_size = record.metadata.as_ref().map(|m| m.to_string().len()).unwrap_or(0);
+        let meta_size = record.metadata.as_ref()
+            .and_then(|m| serde_json::to_string(m).ok())
+            .map(|s| s.len())
+            .unwrap_or(0);
         payload_size + meta_size + 64
     }
 }
 
+#[derive(Clone)]
 struct ZiCFieldProfileBuilder {
     name: String,
     count: usize,
@@ -346,6 +352,7 @@ struct ZiCFieldProfileBuilder {
     string_lengths: Vec<usize>,
     min_numeric: Option<f64>,
     max_numeric: Option<f64>,
+    sum_numeric: f64,
 }
 
 impl ZiCFieldProfileBuilder {
@@ -362,6 +369,7 @@ impl ZiCFieldProfileBuilder {
             string_lengths: Vec::new(),
             min_numeric: None,
             max_numeric: None,
+            sum_numeric: 0.0,
         }
     }
 
@@ -377,6 +385,7 @@ impl ZiCFieldProfileBuilder {
 
     fn track_numeric(&mut self, n: f64) {
         self.numeric_values.push(n);
+        self.sum_numeric += n;
         
         self.min_numeric = Some(self.min_numeric.map_or(n, |m| m.min(n)));
         self.max_numeric = Some(self.max_numeric.map_or(n, |m| m.max(n)));
@@ -391,6 +400,12 @@ impl ZiCFieldProfileBuilder {
             Some(self.unique_values.len())
         } else {
             None
+        };
+
+        let anomalies = if config.detect_anomalies {
+            self.clone().detect_anomalies(config.anomaly_threshold)
+        } else {
+            Vec::new()
         };
 
         let mut frequency_distribution: Vec<(Value, usize)> = self.frequency_map
@@ -424,12 +439,6 @@ impl ZiCFieldProfileBuilder {
             )
         } else {
             (None, None, None, None)
-        };
-
-        let anomalies = if config.detect_anomalies {
-            self.detect_anomalies(config.anomaly_threshold)
-        } else {
-            Vec::new()
         };
 
         ZiCFieldProfile {
@@ -470,30 +479,39 @@ impl ZiCFieldProfileBuilder {
             });
         }
 
-        if let (Some(avg), Some(std)) = (self.avg_value, self.std_dev) {
-            if std > 0.0 {
-                let outlier_count = self.numeric_values
+        if let (Some(min), Some(max)) = (self.min_numeric, self.max_numeric) {
+            if !self.numeric_values.is_empty() {
+                let avg = self.sum_numeric / self.numeric_values.len() as f64;
+                let variance: f64 = self.numeric_values
                     .iter()
-                    .filter(|x| (x - avg).abs() > threshold * std)
-                    .count();
+                    .map(|x| (x - avg).powi(2))
+                    .sum::<f64>() / self.numeric_values.len() as f64;
+                let std = variance.sqrt();
                 
-                if outlier_count > 0 {
-                    let outlier_rate = outlier_count as f64 / self.numeric_values.len() as f64;
-                    let severity = if outlier_rate > 0.1 {
-                        ZiCAnomalySeverity::High
-                    } else if outlier_rate > 0.05 {
-                        ZiCAnomalySeverity::Medium
-                    } else {
-                        ZiCAnomalySeverity::Low
-                    };
+                if std > 0.0 {
+                    let outlier_count = self.numeric_values
+                        .iter()
+                        .filter(|x| (*(*x) - avg).abs() > threshold * std)
+                        .count();
+                    
+                    if outlier_count > 0 {
+                        let outlier_rate = outlier_count as f64 / self.numeric_values.len() as f64;
+                        let severity = if outlier_rate > 0.1 {
+                            ZiCAnomalySeverity::High
+                        } else if outlier_rate > 0.05 {
+                            ZiCAnomalySeverity::Medium
+                        } else {
+                            ZiCAnomalySeverity::Low
+                        };
 
-                    anomalies.push(ZiCAnomaly {
-                        anomaly_type: "numeric_outliers".to_string(),
-                        description: format!("{} outliers detected (>{:.1} std from mean)", outlier_count, threshold),
-                        severity,
-                        affected_count: outlier_count,
-                        sample_indices: Vec::new(),
-                    });
+                        anomalies.push(ZiCAnomaly {
+                            anomaly_type: "numeric_outliers".to_string(),
+                            description: format!("{} outliers detected (>{:.1} std from mean)", outlier_count, threshold),
+                            severity,
+                            affected_count: outlier_count,
+                            sample_indices: Vec::new(),
+                        });
+                    }
                 }
             }
         }

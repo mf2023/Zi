@@ -132,7 +132,7 @@ impl ZiCDSLCompiler {
             "sample.top" => crate::operators::sample::ZiFSampleTopFactory(&node.config),
             
             // PII operators
-            "pii.redact" => crate::operators::pii::ZiFPIIRedactFactory(&node.config),
+            "pii.redact" => crate::operators::pii::ZiFPiiRedactFactory(&node.config),
             
             // Augment operators
             "augment.synonym" => crate::operators::augment::ZiFAugmentSynonymFactory(&node.config),

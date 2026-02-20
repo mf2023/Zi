@@ -317,8 +317,8 @@ pub fn compute_file_hash(path: &Path) -> Result<String> {
     loop {
         match reader.read(&mut buffer) {
             Ok(0) => break,
-            Ok(n) => hasher.update(&buffer[..n]),
-            Err(e) => return Err(ZiError::io(format!("Failed to read file: {}", e))),
+            Ok(n) => { hasher.update(&buffer[..n]); }
+            Err(e) => return Err(ZiError::validation(format!("Failed to read file: {}", e))),
         }
     }
 

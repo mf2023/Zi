@@ -128,10 +128,10 @@ impl ZiCStatistics {
         let min = sorted[0];
         let max = sorted[count - 1];
         let median = sorted[count / 2];
-        let p25 = sorted[(count as f64 * 0.25) as usize.min(count - 1)];
-        let p75 = sorted[(count as f64 * 0.75) as usize.min(count - 1)];
-        let p95 = sorted[(count as f64 * 0.95) as usize.min(count - 1)];
-        let p99 = sorted[(count as f64 * 0.99) as usize.min(count - 1)];
+        let p25 = sorted[((count as f64 * 0.25) as usize).min(count - 1)];
+        let p75 = sorted[((count as f64 * 0.75) as usize).min(count - 1)];
+        let p95 = sorted[((count as f64 * 0.95) as usize).min(count - 1)];
+        let p99 = sorted[((count as f64 * 0.99) as usize).min(count - 1)];
 
         ZiCNumericStats {
             count,

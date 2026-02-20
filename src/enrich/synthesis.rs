@@ -19,6 +19,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, Map};
+use rand::Rng;
+use rand::seq::SliceRandom;
 
 use crate::errors::{Result, ZiError};
 use crate::record::{ZiCRecord, ZiCRecordBatch};
@@ -179,14 +181,15 @@ impl ZiCSynthesizer {
             new_record.id = Some(format!("{}{}synth_{}", prefix, id, index));
         }
 
-        if let Some(template_str) = &self.config.template {
-            let rendered = self.render_template(template_str, record)?;
+        if let Some(template_str) = self.config.template.clone() {
+            let rendered = self.render_template(&template_str, record)?;
             if let Value::Object(ref mut map) = new_record.payload {
                 map.insert("_synthesized".to_string(), Value::String(rendered));
             }
         }
 
-        for template in &self.config.templates {
+        let templates = self.config.templates.clone();
+        for template in templates {
             let rendered = self.render_template(&template.template, record)?;
             if let Value::Object(ref mut map) = new_record.payload {
                 map.insert(template.name.clone(), Value::String(rendered));
@@ -372,8 +375,9 @@ impl ZiCSynthesizer {
             new_record.id = Some(format!("{}{}rule_{}", prefix, id, index));
         }
 
-        for rule in &self.config.rules {
-            let value = self.apply_rule(rule)?;
+        let rules = self.config.rules.clone();
+        for rule in rules {
+            let value = self.apply_rule(&rule)?;
             self.set_field(&mut new_record, &rule.field, value)?;
         }
 
@@ -390,7 +394,8 @@ impl ZiCSynthesizer {
 
         match &rule.rule_type {
             ZiCRuleType::RandomInt { min, max } => {
-                Ok(Value::Number((*self.rng.gen_range(*min..=*max)).into()))
+                let val: i64 = self.rng.gen_range(*min..=*max);
+                Ok(Value::Number(val.into()))
             }
             ZiCRuleType::RandomFloat { min, max, precision } => {
                 let val = self.rng.gen_range(*min..=*max);
@@ -587,9 +592,9 @@ impl ZiCSynthesizer {
                     "the", "quick", "brown", "fox", "jumps", "over", "lazy", "dog",
                     "data", "processing", "machine", "learning", "artificial", "intelligence",
                 ];
+                let count = self.rng.gen_range(5..10);
                 let sentence: String = WORDS
-                    .choose_multiple(&mut self.rng, 5..10)
-                    .iter()
+                    .choose_multiple(&mut self.rng, count)
                     .map(|w| w.to_string())
                     .collect::<Vec<_>>()
                     .join(" ");
@@ -602,9 +607,9 @@ impl ZiCSynthesizer {
                         "the", "quick", "brown", "fox", "data", "processing", "analysis",
                         "machine", "learning", "model", "training", "inference", "optimization",
                     ];
+                    let count = self.rng.gen_range(8..15);
                     let sentence: String = WORDS
-                        .choose_multiple(&mut self.rng, 8..15)
-                        .iter()
+                        .choose_multiple(&mut self.rng, count)
                         .map(|w| w.to_string())
                         .collect::<Vec<_>>()
                         .join(" ");
@@ -734,12 +739,13 @@ impl ZiCSynthesizer {
 
     fn synthesize_hybrid(&mut self, batch: &ZiCRecordBatch) -> Result<ZiCRecordBatch> {
         let mut result = Vec::new();
+        let rules = self.config.rules.clone();
 
         for record in batch {
             for i in 0..self.config.count {
                 let mut new_record = self.apply_template(record, i)?;
                 
-                for rule in &self.config.rules {
+                for rule in &rules {
                     let value = self.apply_rule(rule)?;
                     self.set_field(&mut new_record, &rule.field, value)?;
                 }
