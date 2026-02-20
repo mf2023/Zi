@@ -505,10 +505,15 @@ impl ZiCDistributedCluster {
         Ok(results)
     }
 
-    fn extract_pipeline_config(&self, _pipeline: &ZiCPipeline) -> Result<Value> {
-        // TODO: Implement proper pipeline serialization
-        // For now, return an empty configuration
-        Ok(json!({"steps": []}))
+    fn extract_pipeline_config(&self, pipeline: &ZiCPipeline) -> Result<Value> {
+        let plan = ZiCDistributedExecutionPlan::ZiFFromPipeline(pipeline);
+        let steps: Vec<Value> = plan.nodes.iter().map(|n| {
+            json!({
+                "operator": n.op_code,
+                "config": n.config,
+            })
+        }).collect();
+        Ok(json!({"steps": steps}))
     }
 
     fn split_batch(&self, batch: ZiCRecordBatch, num_chunks: usize) -> Vec<ZiCRecordBatch> {
@@ -659,10 +664,16 @@ pub fn ZiFLoadPipelineFromDistributedConfig(config: &Value) -> Result<ZiCPipelin
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFExportPipelineToDistributedConfig(_pipeline: &ZiCPipeline) -> Result<Value> {
-    // TODO: Implement proper pipeline serialization
+pub fn ZiFExportPipelineToDistributedConfig(pipeline: &ZiCPipeline) -> Result<Value> {
+    let plan = ZiCDistributedExecutionPlan::ZiFFromPipeline(pipeline);
+    let pipeline_steps: Vec<Value> = plan.nodes.iter().map(|n| {
+        json!({
+            "operator": n.op_code,
+            "config": n.config,
+        })
+    }).collect();
     Ok(json!({
-        "pipeline": [],
+        "pipeline": pipeline_steps,
         "version": "1.0",
     }))
 }

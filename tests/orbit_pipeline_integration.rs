@@ -165,6 +165,8 @@ fn orbit_pipeline_filters_enriches_and_limits_jsonl() {
             allowed_capabilities: Vec::new(),
             can_access_versions: false,
             default_visibility: ZiCDataVisibility::Full,
+            role: None,
+            sandbox: Default::default(),
         },
         dependencies: vec![],
         state: Zi::orbit::runtime::ZiCPluginState::Loaded,

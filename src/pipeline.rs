@@ -394,12 +394,8 @@ impl ZiCPipeline {
 
     pub fn run_cached(&mut self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
         fn hash_batch(batch: &ZiCRecordBatch) -> String {
-            use std::collections::hash_map::DefaultHasher;
-            use std::hash::{Hash, Hasher};
             let s = serde_json::to_string(batch).unwrap_or_default();
-            let mut h = DefaultHasher::new();
-            s.hash(&mut h);
-            format!("{:x}", h.finish())
+            blake3::hash(s.as_bytes()).to_hex().to_string()
         }
         
         // Cleanup expired cache entries first
@@ -1147,6 +1143,28 @@ impl ZiCPipelineBuilder {
         self.register(
             "sample.top",
             crate::operators::sample::ZiFSampleTopFactory as OperatorFactory,
+        );
+
+        // llm operators
+        self.register(
+            "llm.token_count",
+            crate::operators::llm::ZiFTokenCountFactory as OperatorFactory,
+        );
+        self.register(
+            "llm.conversation_format",
+            crate::operators::llm::ZiFConversationFormatFactory as OperatorFactory,
+        );
+        self.register(
+            "llm.context_length",
+            crate::operators::llm::ZiFContextLengthFactory as OperatorFactory,
+        );
+        self.register(
+            "llm.qa_extract",
+            crate::operators::llm::ZiFQAExtractFactory as OperatorFactory,
+        );
+        self.register(
+            "llm.instruction_format",
+            crate::operators::llm::ZiFInstructionFormatFactory as OperatorFactory,
         );
     }
 

@@ -424,8 +424,28 @@ pub fn ZiFValidatePluginPackage(path: &Path) -> Result<()> {
             // Validate the signature file itself
             signature.validate()?;
             
-            // TODO: Implement signature verification for directory-based packages
-            // This would require reading all files mentioned in the signature file and verifying their signatures
+            // Verify all signatures for directory-based packages
+            for (file_path, _) in &signature.signatures {
+                let full_path = path.join(file_path);
+                if !full_path.exists() {
+                    return Err(ZiError::validation(format!(
+                        "Signed file not found: {}", file_path
+                    )));
+                }
+                
+                let content = fs::read(&full_path)?;
+                if !signature.verify_file(file_path, &content)? {
+                    return Err(ZiError::validation(format!(
+                        "Signature verification failed for file: {}", file_path
+                    )));
+                }
+            }
+            
+            log::info!(
+                "orbit.plugin.signature.verify_success: All plugin signatures verified successfully for directory - path={}, file_count={}",
+                path.to_string_lossy(),
+                signature.signatures.len()
+            );
         }
         
         Ok(())
