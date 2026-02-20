@@ -88,10 +88,11 @@ anyhow = "1.0"
 log = "0.4"
 num_cpus = "1.16"
 rand = { version = "0.8", features = ["small_rng"] }
-ring = "0.17"
+ring = "0.17.8"
 base64 = "0.22"
 chrono = "0.4"
 hex = "0.4"
+libc = "0.2"
 
 # Python Bindings
 pyo3 = { version = "0.27", optional = true }

@@ -17,6 +17,7 @@
 
 use std::io;
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use zip::result::ZipError;
 
@@ -24,11 +25,11 @@ use zip::result::ZipError;
 pub type Result<T> = std::result::Result<T, ZiError>;
 
 /// Canonical error enumeration for Zi Core.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Serialize, Deserialize)]
 pub enum ZiError {
     /// Errors originating from filesystem or network IO.
     #[error("io error: {0}")]
-    Io(#[from] io::Error),
+    Io(String),
 
     /// Errors caused by malformed schema or incompatible data layout.
     #[error("schema error: {message}")]
@@ -48,15 +49,33 @@ pub enum ZiError {
 
     /// Wrapper for serde-style serialization issues.
     #[error("serialization error: {0}")]
-    Serde(#[from] serde_json::Error),
+    Serde(String),
 
     /// Errors originating from ZIP file operations.
     #[error("zip error: {0}")]
-    Zip(#[from] ZipError),
+    Zip(String),
 
     /// Catch-all variant for unexpected situations.
     #[error("internal error: {0}")]
     Internal(String),
+}
+
+impl From<io::Error> for ZiError {
+    fn from(err: io::Error) -> Self {
+        ZiError::Io(err.to_string())
+    }
+}
+
+impl From<serde_json::Error> for ZiError {
+    fn from(err: serde_json::Error) -> Self {
+        ZiError::Serde(err.to_string())
+    }
+}
+
+impl From<ZipError> for ZiError {
+    fn from(err: ZipError) -> Self {
+        ZiError::Zip(err.to_string())
+    }
 }
 
 impl ZiError {
