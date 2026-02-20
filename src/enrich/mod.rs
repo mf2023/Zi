@@ -19,6 +19,9 @@ pub mod synthesis;
 pub mod annotation;
 pub mod augmentation;
 
-pub use synthesis::{ZiCSynthesizer, ZiCSynthesisConfig};
+pub use synthesis::{
+    ZiCSynthesizer, ZiCSynthesisConfig, ZiCSynthesisMode, ZiCSynthesisRule,
+    ZiCRuleType, ZiCTemplate, ZiCTemplateVariable, ZiCLLMSynthesisConfig,
+};
 pub use annotation::{ZiCAnnotator, ZiCAnnotationConfig};
 pub use augmentation::{ZiCAugmenter, ZiCAugmentationConfig};

@@ -18,5 +18,9 @@
 pub mod writer;
 pub mod manifest;
 
-pub use writer::{ZiCStreamWriter, ZiCWriterConfig};
-pub use manifest::{ZiCManifest, ZiCManifestBuilder};
+pub use writer::{ZiCStreamWriter, ZiCWriterConfig, ZiCOutputFormat, ZiCWriteStats};
+pub use manifest::{
+    ZiCManifest, ZiCManifestBuilder, ZiCManifestFile, ZiCManifestStats,
+    ZiCLineage, ZiCLineageSource, ZiCLineageTransform,
+    compute_file_hash,
+};

@@ -18,5 +18,5 @@
 pub mod format;
 pub mod reader;
 
-pub use format::{ZiCFormatDetector, ZiCDataFormat};
-pub use reader::{ZiCStreamReader, ZiCReaderConfig};
+pub use format::{ZiCFormatDetector, ZiCDataFormat, ZiCCompression, ZiCFormatInfo};
+pub use reader::{ZiCStreamReader, ZiCReaderConfig, ZiCRecordIterator, ProgressCallback, ProgressInfo};

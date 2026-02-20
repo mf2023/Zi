@@ -20,7 +20,7 @@ English | [简体中文](README.zh.md)
     <img alt="ModelScope" src="https://img.shields.io/badge/ModelScope-Dunimd-1E6CFF?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTQiIGhlaWdodD0iMTQiIHZpZXdCb3g9IjAgMCAxNCAxNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTcuMDA2IDBDMy4xNDIgMCAwIDMuMTQyIDAgNy4wMDZTMy4xNDIgMTQuMDEyIDcuMDA2IDE0LjAxMkMxMC44NyAxNC4wMTIgMTQuMDEyIDEwLjg3IDE0LjAxMiA3LjAwNkMxNC4wMTIgMy4xNDIgMTAuODcgMCA3LjAwNiAwWiIgZmlsbD0iIzFFNkNGRiIvPgo8L3N2Zz4K"/>
 </a>
 
-**Unified Data Quality Assessment, Cleaning, Transformation, Sampling, and Augmentation Framework.**
+**Unified LLM Dataset Processing Engine — Data Quality Assessment, Cleaning, Transformation, Sampling, and Augmentation Framework.**
 
 </div>
 
@@ -28,41 +28,40 @@ English | [简体中文](README.zh.md)
 
 ### 📐 Modular Design
 
-Zi adopts a modular architecture optimized for data processing workflows:
+Zi adopts a modular architecture optimized for LLM data processing workflows:
 
 <div align="center">
 
 | Module | Description |
 |:--------|:-------------|
-| **pipeline** | Sequential processing through configurable operators |
+| **pipeline** | Sequential/parallel/conditional processing through configurable operators |
 | **dag** | DAG-based execution with topological sorting for parallel optimization |
 | **operator** | Type-safe trait-based operator system |
-| **operators** | Operator implementations (filter, quality, lang, etc.) |
-| **cache** | Content-addressable cache with triple hashing (data/code/environment) |
-| **monitor** | Runtime metrics collection and configurable quality thresholds |
-| **py** | PyO3-based Python bindings for Python ecosystems |
-| **io** | I/O support (JSONL, CSV, Parquet, Arrow) |
-| **record** | Data record types and management |
+| **operators** | Operator implementations (filter, quality, lang, LLM, etc.) |
+| **ingest** | Data ingestion (JSONL/JSON/CSV/Parquet streaming read) |
+| **export** | Data export (compression, sharding, Manifest) |
+| **inspect** | Data inspection (Profile, Diff, Statistics) |
+| **enrich** | Data enrichment (synthesis, annotation, augmentation) |
+| **dsl** | DSL parser (YAML/JSON configuration) |
+| **version** | Triple-hash versioning (data/code/environment) |
 | **orbit** | Plugin system for dynamic operator loading |
 | **distributed** | Distributed processing support |
-| **metrics** | Quality metrics computation |
-| **log** | Structured logging subsystem |
-| **errors** | Error types and handling |
+| **context** | DMSC integration (log/cache/metrics/trace) |
 
 </div>
 
 ### 🚀 Key Features
 
 #### 🔍 Pipeline Processing
-- Sequential processing through configurable operators
+- Sequential/parallel/conditional processing through configurable operators
 - DAG-based execution with topological sorting
 - Content-addressable caching with triple hashing
 - Incremental processing support
 
 #### 📊 Quality Assessment
-- Multi-metric text quality scoring (ASCII ratio, non-printable chars, repetition)
+- Multi-metric text quality scoring (ASCII ratio, entropy, readability)
 - Toxicity detection using built-in lexicon
-- Language detection (en, zh, ar, ru) based on script analysis
+- Language detection based on script analysis
 - Configurable quality thresholds and filtering
 
 #### 🔧 Data Transformation
@@ -76,11 +75,29 @@ Zi adopts a modular architecture optimized for data processing workflows:
 - MinHash-based similarity estimation
 - Semantic deduplication support
 
-#### 🎲 Sampling & Augmentation
-- Random sampling for dataset reduction
-- Top-k sampling for quality selection
-- Synonym-based text augmentation
-- Noise injection for data diversity
+#### 🤖 LLM-Specific Operators
+- Token counting (Chinese/English mixed estimation)
+- Conversation format conversion (ChatML, ShareGPT, Alpaca, OpenAI)
+- Context length filtering/truncation/splitting
+- QA pair extraction (Markdown, numbered, auto-detection)
+- Instruction tuning data formatting (Alpaca, Vicuna, Llama2, ChatML)
+
+#### 📥 Data Ingestion/Export
+- Streaming read (large file support)
+- Auto format detection (JSONL/JSON/CSV/Parquet)
+- Compression support (Gzip, Zstd)
+- Sharded write, atomic write
+- Manifest with lineage tracking
+
+#### 🔬 Data Inspection
+- Data Profile (field statistics, frequency distribution, anomaly detection)
+- Dataset Diff (record-level, field-level comparison)
+- Text statistics (word frequency, N-gram)
+
+#### ✨ Data Augmentation
+- Template-based data synthesis
+- Rule-driven data generation (random, UUID, Faker)
+- LLM-assisted synthesis interface
 
 <h2 align="center">⚡ Quick Start</h2>
 
@@ -99,6 +116,7 @@ let records = vec![
 let steps = [
     json!({"operator": "lang.detect", "config": {"path": "payload.text"}}),
     json!({"operator": "quality.score", "config": {"path": "payload.text"}}),
+    json!({"operator": "llm.token_count", "config": {"text_field": "payload.text"}}),
     json!({"operator": "quality.filter", "config": {"min": 0.5}}),
 ];
 
@@ -106,23 +124,77 @@ let pipeline = ZiCPipelineBuilder::with_defaults()
     .build_from_config(&steps)
     .expect("valid pipeline");
 
-pipeline.run(records).expect("execution succeeds");
+let result = pipeline.run(records).expect("execution succeeds");
 ```
 
-### Python
+### Data Ingestion & Export
 
-```python
-import zi_core
+```rust
+use Zi::ingest::{ZiCStreamReader, ZiCReaderConfig};
+use Zi::export::{ZiCStreamWriter, ZiCWriterConfig, ZiCOutputFormat};
+use std::path::Path;
 
-# Utility functions
-zi_core.compute_simhash("hello world")
-zi_core.detect_language("hola")        # returns (lang, confidence)
-zi_core.redact_pii("email: test@example.com")
-zi_core.normalize_text("  Hello   WORLD  ")
-zi_core.quality_score("quality text")
-zi_core.toxicity_score("bad content")
-zi_core.generate_prometheus_metrics()  # returns Prometheus format string
-zi_core.version_info()                 # returns dict with version info
+// Read data
+let reader = ZiCStreamReader::ZiFNew()
+    .ZiFWithConfig(ZiCReaderConfig {
+        batch_size: 10000,
+        skip_errors: true,
+        ..Default::default()
+    });
+
+let batch = reader.ZiFReadPath(Path::new("data.jsonl"))?;
+
+// Export data
+let mut writer = ZiCStreamWriter::ZiFNew();
+let config = ZiCWriterConfig {
+    format: ZiCOutputFormat::Jsonl,
+    compression: ZiCCompression::Gzip,
+    split_by_count: Some(100000),
+    ..Default::default()
+};
+
+let stats = writer.ZiFWrite(&batch, Path::new("output.jsonl.gz"))?;
+```
+
+### DSL Configuration
+
+```yaml
+# pipeline.yaml
+steps:
+  - operator: lang.detect
+    config:
+      path: payload.text
+      
+  - operator: quality.score
+    config:
+      path: payload.text
+      
+  - operator: llm.token_count
+    config:
+      text_field: payload.text
+      output_field: metadata.token_count
+      
+  - operator: llm.context_length
+    config:
+      text_field: payload.text
+      max_tokens: 8192
+      action: Filter
+      
+  - operator: quality.filter
+    config:
+      min: 0.5
+```
+
+```rust
+use Zi::dsl::{ZiCDSLParser, ZiCDSLCompiler};
+
+let parser = ZiCDSLParser::ZiFNew();
+let result = parser.ZiFParseFile(Path::new("pipeline.yaml"))?;
+
+let compiler = ZiCDSLCompiler::ZiFNew();
+let pipeline = compiler.ZiFCompile(&result.program)?;
+
+let output = pipeline.ZiFRun(batch)?;
 ```
 
 <h2 align="center">🔧 Configuration</h2>
@@ -149,11 +221,15 @@ zi_core.version_info()                 # returns dict with version info
 ```toml
 [features]
 default = ["full"]
-full = ["parquet", "csv", "parallel"]
-parquet = ["arrow2/io_parquet"]
-csv = ["arrow2/io_csv", "dep:csv"]
+full = ["parquet", "csv", "parallel", "domain", "distributed", "plugin", "compression"]
+parquet = ["dep:parquet", "dep:arrow"]
+csv = ["dep:csv"]
 parallel = ["rayon"]
-pyo3 = ["pyo3/extension-module"]
+domain = []
+distributed = []
+plugin = ["wasmtime"]
+compression = ["dep:flate2", "dep:zstd"]
+pyo3 = ["dep:pyo3", "pyo3/extension-module"]
 ```
 
 <h2 align="center">🧪 Installation & Environment</h2>
@@ -220,6 +296,51 @@ Zi uses triple-hash versioning for reproducible processing:
 
 This enables precise data lineage tracking and exact result reproduction.
 
+<h2 align="center">📋 Operator List</h2>
+
+### Filter Operators (filter.*)
+| Operator | Description |
+|:---------|:------------|
+| `filter.equals` | Field equality filter |
+| `filter.not_equals` | Field inequality filter |
+| `filter.in` / `filter.not_in` | Inclusion/exclusion filter |
+| `filter.contains` | String contains filter |
+| `filter.regex` | Regular expression filter |
+| `filter.range` | Numeric range filter |
+| `filter.exists` / `filter.not_exists` | Field existence check |
+
+### Quality Operators (quality.*)
+| Operator | Description |
+|:---------|:------------|
+| `quality.score` | Text quality scoring |
+| `quality.filter` | Quality threshold filter |
+| `quality.toxicity` | Toxicity detection |
+
+### Dedup Operators (dedup.*)
+| Operator | Description |
+|:---------|:------------|
+| `dedup.simhash` | SimHash deduplication |
+| `dedup.minhash` | MinHash deduplication |
+| `dedup.semantic` | Semantic deduplication |
+
+### LLM Operators (llm.*)
+| Operator | Description |
+|:---------|:------------|
+| `llm.token_count` | Token counting |
+| `llm.conversation_format` | Conversation format conversion |
+| `llm.context_length` | Context length filtering |
+| `llm.qa_extract` | QA pair extraction |
+| `llm.instruction_format` | Instruction formatting |
+
+### Other Operators
+| Operator | Description |
+|:---------|:------------|
+| `lang.detect` | Language detection |
+| `metadata.enrich` | Metadata enrichment |
+| `limit` | Record count limit |
+| `sample.random` | Random sampling |
+| `pii.redact` | PII redaction |
+
 <h2 align="center">❓ Frequently Asked Questions</h2>
 
 **Q: How to add a new operator?**
@@ -228,14 +349,14 @@ A: Implement the `ZiCOperator` trait and register it via the operator registry.
 **Q: How to enable parallel execution?**
 A: Enable the `parallel` feature flag and configure DAG scheduler for parallel execution.
 
-**Q: How to configure quality gates?**
-A: Set quality thresholds in the pipeline configuration under `monitor` section.
+**Q: How to handle large files?**
+A: Use `ZiCRecordIterator` for streaming batch processing.
 
-**Q: How to use content-addressable caching?**
-A: Enable cache in pipeline configuration, Zi automatically handles caching based on triple hashing.
+**Q: How to use DSL configuration?**
+A: Use `ZiCDSLParser` to parse YAML/JSON configuration files.
 
-**Q: How to extend with Python operators?**
-A: Use PyO3 bindings to create custom operators that integrate with the pipeline.
+**Q: How to track data lineage?**
+A: Use `ZiCManifest` and `ZiCLineage` to record processing history.
 
 <h2 align="center">🌏 Community</h2>
 
@@ -262,21 +383,24 @@ This project uses **Apache License 2.0** open source agreement, see [LICENSE](LI
 
 | 📦 Package | 📜 License |
 |:-----------|:-----------|
+| dmsc | Apache 2.0 |
 | serde | Apache 2.0 / MIT |
 | serde_json | MIT |
+| serde_yaml | MIT / Apache 2.0 |
 | regex | MIT |
 | rayon | Apache 2.0 / MIT |
 | pyo3 | Apache 2.0 / MIT |
-| arrow2 | Apache 2.0 / MIT |
+| arrow | Apache 2.0 |
+| parquet | Apache 2.0 |
 | csv | MIT |
-| simhash | MIT |
-| once_cell | MIT / Apache 2.0 |
-| tempfile | MIT / Apache 2.0 |
-| dashmap | MIT |
-| tracing | MIT |
+| blake3 | Apache 2.0 / MIT |
+| chrono | MIT / Apache 2.0 |
+| tokio | MIT |
+| rand | MIT / Apache 2.0 |
+| flate2 | MIT |
+| zstd | MIT |
 | thiserror | MIT |
-| hex | MIT / Apache 2.0 |
-| base64 | MIT |
+| anyhow | MIT |
 
 </div>
 

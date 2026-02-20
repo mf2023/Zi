@@ -4,7 +4,7 @@
 //! The Zi project belongs to the Dunimd project team.
 //!
 //! Licensed under the Apache License, Version 2.0 (the "License");
-//! You may not use this file except in compliance with the License.
+//! you may not use this file except in compliance with the License.
 //! You may obtain a copy of the License at
 //!
 //!     http://www.apache.org/licenses/LICENSE-2.0
@@ -33,6 +33,11 @@ impl ZiCCompiledPipeline {
             current = operator.apply(current)?;
         }
         Ok(current)
+    }
+
+    #[allow(non_snake_case)]
+    pub fn ZiFOperatorCount(&self) -> usize {
+        self.operators.len()
     }
 }
 
@@ -66,7 +71,10 @@ impl ZiCDSLCompiler {
     }
 
     fn compile_node(&self, node: &crate::dsl::ir::ZiCDSLNode) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
-        match node.operator.as_str() {
+        let operator_name = node.operator.as_str();
+        
+        match operator_name {
+            // Filter operators
             "filter.equals" => crate::operators::filter::ZiFFilterEqualsFactory(&node.config),
             "filter.not_equals" => crate::operators::filter::ZiFFilterNotEqualsFactory(&node.config),
             "filter.any" => crate::operators::filter::ZiFFilterAnyFactory(&node.config),
@@ -90,20 +98,61 @@ impl ZiCDSLCompiler {
             "filter.length_range" => crate::operators::filter::ZiFFilterLengthRangeFactory(&node.config),
             "filter.token_range" => crate::operators::filter::ZiFFilterTokenRangeFactory(&node.config),
             
+            // Language operators
             "lang.detect" => crate::operators::lang::ZiFLangDetectFactory(&node.config),
             "lang.confidence" => crate::operators::lang::ZiFLangConfidenceFactory(&node.config),
             
+            // Quality operators
             "quality.score" => crate::operators::quality::ZiFQualityScoreFactory(&node.config),
             "quality.filter" => crate::operators::quality::ZiFQualityFilterFactory(&node.config),
             "quality.toxicity" => crate::operators::quality::ZiFToxicityFactory(&node.config),
             
+            // Dedup operators
             "dedup.simhash" => crate::operators::dedup::ZiFDedupSimhashFactory(&node.config),
             "dedup.minhash" => crate::operators::dedup::ZiFDedupMinhashFactory(&node.config),
             "dedup.semantic" => crate::operators::dedup::ZiFDedupSemanticFactory(&node.config),
             
+            // Transform operators
             "transform.normalize" => crate::operators::transform::ZiFTransformNormalizeFactory(&node.config),
             
-            _ => Err(ZiError::validation(format!("Unknown operator: {}", node.operator))),
+            // Metadata operators
+            "metadata.enrich" => crate::operators::metadata::ZiFMetadataEnrichFactory(&node.config),
+            "metadata.rename" => crate::operators::metadata::ZiFMetadataRenameFactory(&node.config),
+            "metadata.remove" => crate::operators::metadata::ZiFMetadataRemoveFactory(&node.config),
+            "metadata.copy" => crate::operators::metadata::ZiFMetadataCopyFactory(&node.config),
+            "metadata.require" => crate::operators::metadata::ZiFMetadataRequireFactory(&node.config),
+            "metadata.extract" => crate::operators::metadata::ZiFMetadataExtractFactory(&node.config),
+            "metadata.keep" => crate::operators::metadata::ZiFMetadataKeepFactory(&node.config),
+            
+            // Limit operator
+            "limit" => crate::operators::limit::ZiFLimitFactory(&node.config),
+            
+            // Sample operators
+            "sample.random" => crate::operators::sample::ZiFSampleRandomFactory(&node.config),
+            "sample.top" => crate::operators::sample::ZiFSampleTopFactory(&node.config),
+            
+            // PII operators
+            "pii.redact" => crate::operators::pii::ZiFPIIRedactFactory(&node.config),
+            
+            // Augment operators
+            "augment.synonym" => crate::operators::augment::ZiFAugmentSynonymFactory(&node.config),
+            "augment.noise" => crate::operators::augment::ZiFAugmentNoiseFactory(&node.config),
+            
+            // LLM operators
+            "llm.token_count" => crate::operators::llm::ZiFTokenCountFactory(&node.config),
+            "llm.conversation_format" => crate::operators::llm::ZiFConversationFormatFactory(&node.config),
+            "llm.context_length" => crate::operators::llm::ZiFContextLengthFactory(&node.config),
+            "llm.qa_extract" => crate::operators::llm::ZiFQAExtractFactory(&node.config),
+            "llm.instruction_format" => crate::operators::llm::ZiFInstructionFormatFactory(&node.config),
+            
+            _ => {
+                if self.strict {
+                    Err(ZiError::validation(format!("Unknown operator: {}", operator_name)))
+                } else {
+                    log::warn!("Unknown operator '{}', skipping", operator_name);
+                    Err(ZiError::validation(format!("Unknown operator: {}", operator_name)))
+                }
+            }
         }
     }
 }

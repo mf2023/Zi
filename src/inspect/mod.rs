@@ -19,6 +19,12 @@ pub mod profile;
 pub mod diff;
 pub mod statistics;
 
-pub use profile::{ZiCProfileReport, ZiCProfiler};
-pub use diff::{ZiCDiffReport, ZiCDiffer};
+pub use profile::{
+    ZiCProfileReport, ZiCProfiler, ZiCFieldProfile, ZiCAnomaly, ZiCAnomalySeverity,
+    ZiCTextStatistics, ZiCProfilerConfig,
+};
+pub use diff::{
+    ZiCDiffReport, ZiCDiffer, ZiCDiffChange, ZiCChangeType, ZiCDiffStats,
+    ZiCFieldChange, ZiCRecordDiff, ZiCDifferConfig,
+};
 pub use statistics::ZiCStatistics;

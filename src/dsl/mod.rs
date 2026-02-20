@@ -19,6 +19,6 @@ pub mod parser;
 pub mod ir;
 pub mod compiler;
 
-pub use parser::{ZiCDSLParser, ZiCParseResult};
+pub use parser::{ZiCDSLParser, ZiCParseResult, ZiCDSLParserConfig};
 pub use ir::{ZiCDSLNode, ZiCDSLProgram};
 pub use compiler::{ZiCDSLCompiler, ZiCCompiledPipeline};

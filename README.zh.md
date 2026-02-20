@@ -20,7 +20,7 @@
     <img alt="ModelScope" src="https://img.shields.io/badge/ModelScope-Dunimd-1E6CFF?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTQiIGhlaWdodD0iMTQiIHZpZXdCb3g9IjAgMCAxNCAxNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTcuMDA2IDBDMy4xNDIgMCAwIDMuMTQyIDAgNy4wMDZTMy4xNDIgMTQuMDEyIDcuMDA2IDE0LjAxMkMxMC44NyAxNC4wMTIgMTQuMDEyIDEwLjg3IDE0LjAxMiA3LjAwNkMxNC4wMTIgMy4xNDIgMTAuODcgMCA3LjAwNiAwWiIgZmlsbD0iIzFFNkNGRiIvPgo8L3N2Zz4K"/>
 </a>
 
-**统一的数据质量评估、清洗、转换、采样与增强框架。**
+**统一的大模型数据集处理引擎 — 数据质量评估、清洗、转换、采样与增强框架。**
 
 </div>
 
@@ -28,41 +28,40 @@
 
 ### 📐 模块化设计
 
-Zi 采用针对数据处理工作流优化的模块化架构：
+Zi 采用针对 LLM 数据处理工作流优化的模块化架构：
 
 <div align="center">
 
 | 模块 | 描述 |
 |:--------|:-------------|
-| **pipeline** | 通过可配置算子进行顺序处理 |
+| **pipeline** | 通过可配置算子进行顺序/并行/条件处理 |
 | **dag** | 基于 DAG 的执行，支持拓扑排序实现并行优化 |
 | **operator** | 基于 trait 的类型安全算子系统 |
-| **operators** | 算子实现（过滤、质量、语言等） |
-| **cache** | 内容寻址缓存，支持三哈希（数据/代码/环境） |
-| **monitor** | 运行时指标收集和可配置的质量阈值 |
-| **py** | 基于 PyO3 的 Python 绑定 |
-| **io** | I/O 支持（JSONL、CSV、Parquet、Arrow） |
-| **record** | 数据记录类型和管理 |
+| **operators** | 算子实现（过滤、质量、语言、LLM 等） |
+| **ingest** | 数据摄入（JSONL/JSON/CSV/Parquet 流式读取） |
+| **export** | 数据导出（压缩、分片、Manifest 清单） |
+| **inspect** | 数据检查（Profile、Diff、Statistics） |
+| **enrich** | 数据增强（合成、标注、增强） |
+| **dsl** | DSL 解析器（YAML/JSON 配置） |
+| **version** | 三哈希版本控制（数据/代码/环境） |
 | **orbit** | 用于动态加载算子的插件系统 |
 | **distributed** | 分布式处理支持 |
-| **metrics** | 质量指标计算 |
-| **log** | 结构化日志子系统 |
-| **errors** | 错误类型和处理 |
+| **context** | DMSC 集成（日志/缓存/指标/追踪） |
 
 </div>
 
 ### 🚀 核心特性
 
 #### 🔍 管道处理
-- 通过可配置算子进行顺序处理
+- 通过可配置算子进行顺序/并行/条件处理
 - 基于 DAG 的执行，支持拓扑排序
 - 使用三哈希的内容寻址缓存
 - 支持增量处理
 
 #### 📊 质量评估
-- 多指标文本质量评分（ASCII 比例、非打印字符、重复度）
+- 多指标文本质量评分（ASCII 比例、熵、可读性）
 - 使用内置词典的毒性检测
-- 基于脚本分析的语言检测（en、zh、ar、ru）
+- 基于脚本分析的语言检测
 - 可配置的质量阈值和过滤
 
 #### 🔧 数据转换
@@ -76,11 +75,29 @@ Zi 采用针对数据处理工作流优化的模块化架构：
 - 基于 MinHash 的相似度估计
 - 支持语义去重
 
-#### 🎲 采样与增强
-- 随机采样用于数据集缩减
-- Top-k 采样用于质量选择
-- 基于同义词的文本增强
-- 噪声注入用于数据多样性
+#### 🤖 LLM 专用算子
+- Token 统计（支持中英文混合估算）
+- 对话格式转换（ChatML、ShareGPT、Alpaca、OpenAI）
+- 上下文长度过滤/截断/分割
+- QA 对提取（Markdown、编号、自动检测）
+- 指令微调数据格式化（Alpaca、Vicuna、Llama2、ChatML）
+
+#### 📥 数据摄入/导出
+- 流式读取（支持大文件）
+- 格式自动检测（JSONL/JSON/CSV/Parquet）
+- 压缩文件支持（Gzip、Zstd）
+- 分片写入、原子写入
+- Manifest 清单与血缘追踪
+
+#### 🔬 数据检查
+- 数据 Profile（字段统计、频率分布、异常检测）
+- 数据集 Diff（记录级、字段级对比）
+- 文本统计（词频、N-gram）
+
+#### ✨ 数据增强
+- 模板化数据合成
+- 规则驱动数据生成（随机数、UUID、Faker）
+- LLM 辅助合成接口
 
 <h2 align="center">⚡ 快速开始</h2>
 
@@ -99,6 +116,7 @@ let records = vec![
 let steps = [
     json!({"operator": "lang.detect", "config": {"path": "payload.text"}}),
     json!({"operator": "quality.score", "config": {"path": "payload.text"}}),
+    json!({"operator": "llm.token_count", "config": {"text_field": "payload.text"}}),
     json!({"operator": "quality.filter", "config": {"min": 0.5}}),
 ];
 
@@ -106,23 +124,77 @@ let pipeline = ZiCPipelineBuilder::with_defaults()
     .build_from_config(&steps)
     .expect("合法的管道配置");
 
-pipeline.run(records).expect("管道执行成功");
+let result = pipeline.run(records).expect("管道执行成功");
 ```
 
-### Python
+### 数据摄入与导出
 
-```python
-import zi_core
+```rust
+use Zi::ingest::{ZiCStreamReader, ZiCReaderConfig};
+use Zi::export::{ZiCStreamWriter, ZiCWriterConfig, ZiCOutputFormat};
+use std::path::Path;
 
-# 工具函数
-zi_core.compute_simhash("hello world")
-zi_core.detect_language("hola")        # 返回 (语言, 置信度)
-zi_core.redact_pii("email: test@example.com")
-zi_core.normalize_text("  Hello   WORLD  ")
-zi_core.quality_score("高质量文本")
-zi_core.toxicity_score("不良内容")
-zi_core.generate_prometheus_metrics()  # 返回 Prometheus 格式字符串
-zi_core.version_info()                 # 返回包含版本信息的字典
+// 读取数据
+let reader = ZiCStreamReader::ZiFNew()
+    .ZiFWithConfig(ZiCReaderConfig {
+        batch_size: 10000,
+        skip_errors: true,
+        ..Default::default()
+    });
+
+let batch = reader.ZiFReadPath(Path::new("data.jsonl"))?;
+
+// 导出数据
+let mut writer = ZiCStreamWriter::ZiFNew();
+let config = ZiCWriterConfig {
+    format: ZiCOutputFormat::Jsonl,
+    compression: ZiCCompression::Gzip,
+    split_by_count: Some(100000),
+    ..Default::default()
+};
+
+let stats = writer.ZiFWrite(&batch, Path::new("output.jsonl.gz"))?;
+```
+
+### DSL 配置
+
+```yaml
+# pipeline.yaml
+steps:
+  - operator: lang.detect
+    config:
+      path: payload.text
+      
+  - operator: quality.score
+    config:
+      path: payload.text
+      
+  - operator: llm.token_count
+    config:
+      text_field: payload.text
+      output_field: metadata.token_count
+      
+  - operator: llm.context_length
+    config:
+      text_field: payload.text
+      max_tokens: 8192
+      action: Filter
+      
+  - operator: quality.filter
+    config:
+      min: 0.5
+```
+
+```rust
+use Zi::dsl::{ZiCDSLParser, ZiCDSLCompiler};
+
+let parser = ZiCDSLParser::ZiFNew();
+let result = parser.ZiFParseFile(Path::new("pipeline.yaml"))?;
+
+let compiler = ZiCDSLCompiler::ZiFNew();
+let pipeline = compiler.ZiFCompile(&result.program)?;
+
+let output = pipeline.ZiFRun(batch)?;
 ```
 
 <h2 align="center">🔧 配置</h2>
@@ -149,11 +221,15 @@ zi_core.version_info()                 # 返回包含版本信息的字典
 ```toml
 [features]
 default = ["full"]
-full = ["parquet", "csv", "parallel"]
-parquet = ["arrow2/io_parquet"]
-csv = ["arrow2/io_csv", "dep:csv"]
+full = ["parquet", "csv", "parallel", "domain", "distributed", "plugin", "compression"]
+parquet = ["dep:parquet", "dep:arrow"]
+csv = ["dep:csv"]
 parallel = ["rayon"]
-pyo3 = ["pyo3/extension-module"]
+domain = []
+distributed = []
+plugin = ["wasmtime"]
+compression = ["dep:flate2", "dep:zstd"]
+pyo3 = ["dep:pyo3", "pyo3/extension-module"]
 ```
 
 <h2 align="center">🧪 安装与环境</h2>
@@ -220,6 +296,51 @@ Zi 使用三哈希版本控制实现可重复处理：
 
 这实现了精确的数据血缘追踪和结果精确重现。
 
+<h2 align="center">📋 算子列表</h2>
+
+### 过滤算子 (filter.*)
+| 算子 | 描述 |
+|:-----|:-----|
+| `filter.equals` | 字段相等过滤 |
+| `filter.not_equals` | 字段不等过滤 |
+| `filter.in` / `filter.not_in` | 包含/排除过滤 |
+| `filter.contains` | 字符串包含过滤 |
+| `filter.regex` | 正则表达式过滤 |
+| `filter.range` | 数值范围过滤 |
+| `filter.exists` / `filter.not_exists` | 字段存在检查 |
+
+### 质量算子 (quality.*)
+| 算子 | 描述 |
+|:-----|:-----|
+| `quality.score` | 文本质量评分 |
+| `quality.filter` | 质量阈值过滤 |
+| `quality.toxicity` | 毒性检测 |
+
+### 去重算子 (dedup.*)
+| 算子 | 描述 |
+|:-----|:-----|
+| `dedup.simhash` | SimHash 去重 |
+| `dedup.minhash` | MinHash 去重 |
+| `dedup.semantic` | 语义去重 |
+
+### LLM 算子 (llm.*)
+| 算子 | 描述 |
+|:-----|:-----|
+| `llm.token_count` | Token 统计 |
+| `llm.conversation_format` | 对话格式转换 |
+| `llm.context_length` | 上下文长度过滤 |
+| `llm.qa_extract` | QA 对提取 |
+| `llm.instruction_format` | 指令格式化 |
+
+### 其他算子
+| 算子 | 描述 |
+|:-----|:-----|
+| `lang.detect` | 语言检测 |
+| `metadata.enrich` | 元数据丰富 |
+| `limit` | 记录数量限制 |
+| `sample.random` | 随机采样 |
+| `pii.redact` | PII 脱敏 |
+
 <h2 align="center">❓ 常见问题</h2>
 
 **Q: 如何添加新算子？**
@@ -228,14 +349,14 @@ A: 实现 `ZiCOperator` trait 并通过算子注册表注册。
 **Q: 如何启用并行执行？**
 A: 启用 `parallel` 特性标志并配置 DAG 调度器进行并行执行。
 
-**Q: 如何配置质量门控？**
-A: 在管道配置的 `monitor` 部分设置质量阈值。
+**Q: 如何处理大文件？**
+A: 使用 `ZiCRecordIterator` 进行流式批处理。
 
-**Q: 如何使用内容寻址缓存？**
-A: 在管道配置中启用缓存，Zi 基于三哈希自动处理缓存。
+**Q: 如何使用 DSL 配置？**
+A: 使用 `ZiCDSLParser` 解析 YAML/JSON 配置文件。
 
-**Q: 如何使用 Python 扩展算子？**
-A: 使用 PyO3 绑定创建与管道集成的自定义算子。
+**Q: 如何追踪数据血缘？**
+A: 使用 `ZiCManifest` 和 `ZiCLineage` 记录处理过程。
 
 <h2 align="center">🌏 社区</h2>
 
@@ -262,21 +383,24 @@ A: 使用 PyO3 绑定创建与管道集成的自定义算子。
 
 | 📦 包 | 📜 许可证 |
 |:-----------|:-----------|
+| dmsc | Apache 2.0 |
 | serde | Apache 2.0 / MIT |
 | serde_json | MIT |
+| serde_yaml | MIT / Apache 2.0 |
 | regex | MIT |
 | rayon | Apache 2.0 / MIT |
 | pyo3 | Apache 2.0 / MIT |
-| arrow2 | Apache 2.0 / MIT |
+| arrow | Apache 2.0 |
+| parquet | Apache 2.0 |
 | csv | MIT |
-| simhash | MIT |
-| once_cell | MIT / Apache 2.0 |
-| tempfile | MIT / Apache 2.0 |
-| dashmap | MIT |
-| tracing | MIT |
+| blake3 | Apache 2.0 / MIT |
+| chrono | MIT / Apache 2.0 |
+| tokio | MIT |
+| rand | MIT / Apache 2.0 |
+| flate2 | MIT |
+| zstd | MIT |
 | thiserror | MIT |
-| hex | MIT / Apache 2.0 |
-| base64 | MIT |
+| anyhow | MIT |
 
 </div>
 

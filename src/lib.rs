@@ -42,8 +42,22 @@ pub mod dsl;
 pub use context::ZiContext;
 pub use metrics::{ZiCQualityMetrics, ZiCStatisticSummary};
 
-pub use ingest::{ZiCFormatDetector, ZiCDataFormat, ZiCStreamReader, ZiCReaderConfig};
-pub use inspect::{ZiCProfileReport, ZiCProfiler, ZiCDiffReport, ZiCDiffer, ZiCStatistics};
-pub use export::{ZiCStreamWriter, ZiCWriterConfig, ZiCManifest, ZiCManifestBuilder};
-pub use enrich::{ZiCSynthesizer, ZiCSynthesisConfig, ZiCAnnotator, ZiCAnnotationConfig, ZiCAugmenter, ZiCAugmentationConfig};
-pub use dsl::{ZiCDSLParser, ZiCParseResult, ZiCDSLNode, ZiCDSLProgram, ZiCDSLCompiler, ZiCCompiledPipeline};
+pub use ingest::{ZiCFormatDetector, ZiCDataFormat, ZiCStreamReader, ZiCReaderConfig, ZiCCompression, ZiCFormatInfo, ZiCRecordIterator, ProgressCallback, ProgressInfo};
+pub use inspect::{
+    ZiCProfileReport, ZiCProfiler, ZiCFieldProfile, ZiCAnomaly, 
+    ZiCDiffReport, ZiCDiffer, ZiCDiffChange, ZiCChangeType, ZiCStatistics, 
+    ZiCTextStatistics, ZiCProfilerConfig, ZiCDiffStats, ZiCFieldChange, ZiCRecordDiff,
+};
+pub use export::{ZiCStreamWriter, ZiCWriterConfig, ZiCManifest, ZiCManifestBuilder, ZiCOutputFormat, ZiCWriteStats, ZiCManifestFile, ZiCLineage};
+pub use enrich::{
+    ZiCSynthesizer, ZiCSynthesisConfig, ZiCSynthesisMode, ZiCSynthesisRule,
+    ZiCAnnotator, ZiCAnnotationConfig, ZiCAugmenter, ZiCAugmentationConfig,
+    ZiCRuleType, ZiCTemplate, ZiCTemplateVariable, ZiCLLMSynthesisConfig,
+};
+pub use dsl::{ZiCDSLParser, ZiCParseResult, ZiCDSLNode, ZiCDSLProgram, ZiCDSLCompiler, ZiCCompiledPipeline, ZiCDSLParserConfig};
+
+pub use operators::llm::{
+    ZiCTokenCountConfig, ZiCConversationConfig, ZiCConversationFormat,
+    ZiCContextLengthConfig, ZiCContextLengthAction, ZiCQAExtractConfig, ZiCQAPattern,
+    ZiCInstructionFormatConfig, ZiCInstructionFormat,
+};
