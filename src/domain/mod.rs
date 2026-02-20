@@ -247,7 +247,7 @@ impl<P: ZiCSamplePayload> ZiCSampleBatchIter<P> for ZiCSampleBatch<P> {
     }
 }
 
-#[cfg(feature = "arrow")]
+#[cfg(feature = "parquet")]
 mod arrow_support {
     use super::*;
     use arrow2::array::{Array, StructArray};

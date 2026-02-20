@@ -237,7 +237,7 @@ impl ZiCProfiler {
         &self,
         path: &str,
         value: &Value,
-        idx: usize,
+        _idx: usize,
         profiles: &mut HashMap<String, ZiCFieldProfileBuilder>,
         text_stats: &mut ZiCTextStatsBuilder,
     ) {
@@ -251,7 +251,7 @@ impl ZiCProfiler {
             Value::Null => {
                 profile.null_count += 1;
             }
-            Value::Bool(b) => {
+            Value::Bool(_b) => {
                 *profile.type_distribution.entry("bool".to_string()).or_insert(0) += 1;
                 profile.track_unique(value.clone());
                 profile.track_frequency(value.clone());
@@ -275,11 +275,11 @@ impl ZiCProfiler {
                     text_stats.process_text(s);
                 }
             }
-            Value::Array(arr) => {
+            Value::Array(_arr) => {
                 *profile.type_distribution.entry("array".to_string()).or_insert(0) += 1;
                 profile.track_unique(value.clone());
             }
-            Value::Object(obj) => {
+            Value::Object(_obj) => {
                 *profile.type_distribution.entry("object".to_string()).or_insert(0) += 1;
                 profile.track_unique(value.clone());
             }
@@ -325,7 +325,7 @@ impl ZiCProfiler {
             .sum::<f64>()
             / profiles.len().max(1) as f64;
 
-        let score = (completeness * 0.3 + uniqueness * 0.25 + non_empty_ratio * 0.25 + (1.0 - anomaly_penalty) * 0.2);
+        let score = completeness * 0.3 + uniqueness * 0.25 + non_empty_ratio * 0.25 + (1.0 - anomaly_penalty) * 0.2;
         score.max(0.0).min(1.0)
     }
 
@@ -479,7 +479,7 @@ impl ZiCFieldProfileBuilder {
             });
         }
 
-        if let (Some(min), Some(max)) = (self.min_numeric, self.max_numeric) {
+        if let (Some(_min), Some(_max)) = (self.min_numeric, self.max_numeric) {
             if !self.numeric_values.is_empty() {
                 let avg = self.sum_numeric / self.numeric_values.len() as f64;
                 let variance: f64 = self.numeric_values

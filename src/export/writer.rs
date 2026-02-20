@@ -281,7 +281,7 @@ impl ZiCStreamWriter {
 
     #[cfg(feature = "parquet")]
     fn write_parquet_impl(&self, batch: &ZiCRecordBatch, path: &Path) -> Result<()> {
-        use arrow::array::{ArrayRef, RecordBatch, StringArray, Int64Array};
+        use arrow::array::{ArrayRef, RecordBatch, StringArray};
         use arrow::datatypes::{Schema, Field, DataType};
         use parquet::arrow::ArrowWriter;
         use std::sync::Arc;

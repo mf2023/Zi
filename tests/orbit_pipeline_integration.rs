@@ -172,7 +172,7 @@ fn orbit_pipeline_filters_enriches_and_limits_jsonl() {
         state: Zi::orbit::runtime::ZiCPluginState::Loaded,
         load_time: std::time::SystemTime::now(),
     };
-    orbit.ZiFRegisterPlugin(descriptor);
+    let _ = orbit.ZiFRegisterPlugin(descriptor);
 
     let orbit_pipeline = builder
         .ZiFBuildOrbitPipeline(plugin_id, config.as_array().expect("config must be array"))

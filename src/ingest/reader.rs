@@ -130,7 +130,7 @@ impl ZiCStreamReader {
         let mut batch = Vec::with_capacity(self.config.batch_size);
         let mut error_count = 0;
         let mut records_read = 0;
-        let mut bytes_read = 0;
+        let _bytes_read = 0;
 
         for (idx, line) in reader.lines().enumerate() {
             match line {
@@ -378,6 +378,7 @@ pub struct ZiCRecordIterator<'a> {
     records_read: usize,
     bytes_read: usize,
     error_count: usize,
+    #[allow(dead_code)]
     buffer: ZiCRecordBatch,
     exhausted: bool,
 }

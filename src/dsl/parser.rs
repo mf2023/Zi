@@ -352,10 +352,10 @@ impl ZiCDSLParser {
             return Err(ZiError::validation("Variable must be in format $name=value"));
         }
 
-        let name = parts[0].trim();
+        let _name = parts[0].trim();
         let value_str = parts[1].trim();
         
-        let value = if value_str.starts_with('"') || value_str.starts_with('\'') {
+        let _value = if value_str.starts_with('"') || value_str.starts_with('\'') {
             Value::String(value_str.trim_matches(|c| c == '"' || c == '\'').to_string())
         } else if let Ok(n) = value_str.parse::<i64>() {
             Value::Number(n.into())

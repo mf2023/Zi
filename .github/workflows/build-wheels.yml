@@ -81,9 +81,6 @@ jobs:
       - name: Build Zi
         run: cargo build --release --features full
 
-      - name: Run Rust tests
-        run: cargo test --release --features full --no-fail-fast -- --test-threads=4
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -121,9 +118,6 @@ jobs:
       - name: Build Zi
         run: cargo build --release --features full
 
-      - name: Run Rust tests
-        run: cargo test --release --features full --no-fail-fast -- --test-threads=4
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -155,9 +149,6 @@ jobs:
 
       - name: Build Zi
         run: cargo build --release --features full
-
-      - name: Run Rust tests
-        run: cargo test --release --features full --no-fail-fast -- --test-threads=4
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -191,9 +182,6 @@ jobs:
       - name: Build Zi
         run: cargo build --release --features full
 
-      - name: Run Rust tests
-        run: cargo test --release --features full --no-fail-fast -- --test-threads=4
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -226,15 +214,41 @@ jobs:
       - name: Build Zi
         run: cargo build --release --features full
 
-      - name: Run Rust tests
-        run: cargo test --release --features full --no-fail-fast -- --test-threads=4
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: zi-rust-macos-arm64
           path: target/release/libZi.rlib
           retention-days: 7
+
+  test-rust:
+    needs: [build-rust-linux-x64, build-rust-linux-arm64, build-rust-windows-x64, build-rust-macos-x64, build-rust-macos-arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Zi
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-zi-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-zi-test-
+
+      - name: Run Rust tests
+        run: cargo test --release --features full --no-fail-fast -- --test-threads=4
 
 # TODO: Enable when Python bindings are ready
 #  build-wheels-linux:
@@ -538,7 +552,7 @@ jobs:
 #          skip-existing: true
 
   publish-crates:
-    needs: [build-rust-linux-x64, build-rust-windows-x64, build-rust-macos-x64]
+    needs: [build-rust-linux-x64, build-rust-windows-x64, build-rust-macos-x64, test-rust]
     runs-on: ubuntu-latest
     if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_crates == 'true')
     steps:

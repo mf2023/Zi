@@ -17,7 +17,7 @@
 
 use std::path::Path;
 
-use crate::errors::{Result, ZiError};
+use crate::errors::Result;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ZiCDataFormat {

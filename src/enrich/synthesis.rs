@@ -20,7 +20,6 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, Map};
 use rand::Rng;
-use rand::seq::SliceRandom;
 
 use crate::errors::{Result, ZiError};
 use crate::record::{ZiCRecord, ZiCRecordBatch};
@@ -325,7 +324,7 @@ impl ZiCSynthesizer {
             }
             "uuid" => {
                 use rand::Rng;
-                let mut rng = &mut self.rng;
+                let rng = &mut self.rng;
                 let uuid = format!(
                     "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
                     rng.gen::<u32>(),
@@ -455,7 +454,7 @@ impl ZiCSynthesizer {
     }
 
     fn generate_random_date(&self, start: &str, end: &str, format: &str) -> Result<Value> {
-        use chrono::{DateTime, NaiveDateTime, Utc};
+        use chrono::{DateTime, NaiveDateTime};
 
         let start_dt = NaiveDateTime::parse_from_str(start, format)
             .map_err(|e| ZiError::validation(format!("Invalid start date: {}", e)))?;

@@ -15,7 +15,7 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use super::{ZiCDomain, ZiCSamplePayload, ZiCSampleError};
+use super::{ZiCDomain, ZiCSamplePayload};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

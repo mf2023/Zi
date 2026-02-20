@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::errors::Result;
-use crate::record::{ZiCRecord, ZiCRecordBatch};
+use crate::record::ZiCRecordBatch;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ZiCAugmentationConfig {

@@ -17,8 +17,6 @@
 
 //! Python bindings for Zi Core using PyO3.
 
-use std::collections::HashMap;
-
 #[cfg(feature = "pyo3")]
 use pyo3::prelude::*;
 

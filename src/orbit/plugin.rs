@@ -289,7 +289,7 @@ mod tests {
 
     #[test]
     fn test_lifecycle_manager() {
-        let mut manager = ZiCPluginLifecycleManager::ZiFNew();
+        let manager = ZiCPluginLifecycleManager::ZiFNew();
         assert!(manager.ZiFGetAllPlugins().is_empty());
     }
 }

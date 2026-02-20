@@ -16,7 +16,7 @@
 //! limitations under the License.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, Map, json};
+use serde_json::{Value, json};
 
 use crate::errors::{Result, ZiError};
 use crate::record::{ZiCRecord, ZiCRecordBatch};
@@ -156,7 +156,6 @@ impl ZiCTokenCounter {
     }
 
     fn estimate_tokens(&self, text: &str) -> usize {
-        let char_count = text.chars().count();
         let word_count = text.split_whitespace().count();
         
         let chinese_chars = text.chars().filter(|c| '\u{4e00}' <= *c && *c <= '\u{9fff}').count();
@@ -427,7 +426,6 @@ impl ZiCContextLengthFilter {
     }
 
     fn estimate_tokens(&self, text: &str) -> usize {
-        let char_count = text.chars().count();
         let word_count = text.split_whitespace().count();
         let chinese_chars = text.chars().filter(|c| '\u{4e00}' <= *c && *c <= '\u{9fff}').count();
         let english_words = word_count - chinese_chars / 2;

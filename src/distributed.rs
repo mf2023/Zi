@@ -29,9 +29,7 @@ use crate::errors::{Result, ZiError};
 use crate::pipeline::{ZiCPipeline, ZiCPipelineNode, ZiCPipelineBuilder};
 use crate::record::ZiCRecordBatch;
 
-const MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
-const DEFAULT_CHUNK_SIZE: usize = 1000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ZiCDistributedNodeConfig {
@@ -96,7 +94,6 @@ pub struct ZiCDistributedCluster {
     pipelines: Arc<Mutex<HashMap<String, ZiCPipeline>>>,
     tasks: Arc<Mutex<Vec<ZiCDistributedTask>>>,
     results: Arc<Mutex<HashMap<String, ZiCDistributedExecutionResponse>>>,
-    request_id_counter: Arc<Mutex<u64>>,
 }
 
 impl ZiCDistributedCluster {
@@ -150,7 +147,6 @@ impl ZiCDistributedCluster {
         let results = self.results.clone();
 
         thread::spawn(move || {
-            let mut buffer: Vec<u8> = Vec::new();
             for stream in listener.incoming() {
                 match stream {
                     Ok(stream) => {
@@ -183,7 +179,7 @@ impl ZiCDistributedCluster {
         thread::spawn(move || {
             for stream in listener.incoming() {
                 match stream {
-                    Ok(mut stream) => {
+                    Ok(stream) => {
                         stream.set_read_timeout(Some(CONNECTION_TIMEOUT)).ok();
                         thread::spawn(move || {
                             Self::handle_worker_connection(stream);

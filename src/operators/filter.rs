@@ -16,7 +16,7 @@
 //! limitations under the License.
 
 use regex::Regex;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::errors::{Result, ZiError};
 use crate::operator::ZiCOperator;
