@@ -92,7 +92,7 @@ jobs:
           retention-days: 7
 
   build-rust-linux-arm64:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout Zi
         uses: actions/checkout@v4
@@ -100,7 +100,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -119,15 +119,16 @@ jobs:
             ${{ runner.os }}-cargo-zi-arm64-
 
       - name: Build Zi
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-        run: cargo build --release --features full --target aarch64-unknown-linux-gnu
+        run: cargo build --release --features full
+
+      - name: Run Rust tests
+        run: cargo test --release --features full --no-fail-fast -- --test-threads=4
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: zi-rust-linux-arm64
-          path: target/aarch64-unknown-linux-gnu/release/libZi.rlib
+          path: target/release/libZi.rlib
           retention-days: 7
 
   build-rust-windows-x64:
@@ -201,7 +202,7 @@ jobs:
           retention-days: 7
 
   build-rust-macos-arm64:
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
       - name: Checkout Zi
         uses: actions/checkout@v4
@@ -223,15 +224,16 @@ jobs:
             ${{ runner.os }}-cargo-zi-arm64-
 
       - name: Build Zi
-        env:
-          RUSTFLAGS: "-C target-cpu=apple-m1"
-        run: cargo build --release --features full --target aarch64-apple-darwin
+        run: cargo build --release --features full
+
+      - name: Run Rust tests
+        run: cargo test --release --features full --no-fail-fast -- --test-threads=4
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: zi-rust-macos-arm64
-          path: target/aarch64-apple-darwin/release/libZi.rlib
+          path: target/release/libZi.rlib
           retention-days: 7
 
 # TODO: Enable when Python bindings are ready
