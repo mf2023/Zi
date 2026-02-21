@@ -88,7 +88,7 @@ anyhow = "1.0"
 log = "0.4"
 num_cpus = "1.16"
 rand = { version = "0.8", features = ["small_rng"] }
-ring = "=0.17.8"
+ring = "0.17.9"
 base64 = "0.22"
 chrono = "0.4"
 hex = "0.4"
