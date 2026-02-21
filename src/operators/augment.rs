@@ -27,13 +27,13 @@ use crate::operators::filter::ZiCFieldPath;
 use crate::record::ZiCRecordBatch;
 
 #[derive(Debug, Clone)]
-pub(crate) struct _SynonymEntry {
-    word: String,
-    replacements: Vec<String>,
+pub struct _SynonymEntry {
+    pub word: String,
+    pub replacements: Vec<String>,
 }
 
 #[derive(Debug)]
-struct _AugmentSynonym {
+pub struct _AugmentSynonym {
     path: ZiCFieldPath,
     synonyms: Vec<_SynonymEntry>,
     seed: u64,
@@ -41,7 +41,7 @@ struct _AugmentSynonym {
 
 impl _AugmentSynonym {
     #[allow(non_snake_case)]
-    pub(crate) fn ZiFNew(path: ZiCFieldPath, synonyms: Vec<_SynonymEntry>, seed: u64) -> Self {
+    pub fn ZiFNew(path: ZiCFieldPath, synonyms: Vec<_SynonymEntry>, seed: u64) -> Self {
         Self {
             path,
             synonyms,
@@ -159,7 +159,7 @@ pub fn ZiFAugmentSynonymFactory(config: &Value) -> Result<Box<dyn ZiCOperator + 
 }
 
 #[derive(Debug)]
-struct _AugmentNoise {
+pub struct _AugmentNoise {
     path: ZiCFieldPath,
     intensity: f64,
     seed: u64,
@@ -167,7 +167,7 @@ struct _AugmentNoise {
 
 impl _AugmentNoise {
     #[allow(non_snake_case)]
-    pub(crate) fn ZiFNew(path: ZiCFieldPath, intensity: f64, seed: u64) -> Self {
+    pub fn ZiFNew(path: ZiCFieldPath, intensity: f64, seed: u64) -> Self {
         Self {
             path,
             intensity,
@@ -236,34 +236,4 @@ pub fn ZiFAugmentNoiseFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Se
     Ok(Box::new(_AugmentNoise::ZiFNew(field_path, intensity, seed)))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::record::ZiCRecord;
-    use serde_json::json;
 
-    #[test]
-    fn synonym_replaces_words() {
-        let op = _AugmentSynonym::ZiFNew(
-            ZiCFieldPath::ZiFParse("payload.text").unwrap(),
-            vec![_SynonymEntry {
-                word: "good".into(),
-                replacements: vec!["great".into(), "nice".into()],
-            }],
-            42,
-        );
-        let batch = vec![ZiCRecord::ZiFNew(None, json!({"text": "A good day"}))];
-        let out = op.apply(batch).unwrap();
-        let text = out[0].payload["text"].as_str().unwrap();
-        assert!(text.contains("good") || text.contains("great") || text.contains("nice"));
-    }
-
-    #[test]
-    fn noise_flips_characters() {
-        let op = _AugmentNoise::ZiFNew(ZiCFieldPath::ZiFParse("payload.text").unwrap(), 1.0, 1);
-        let batch = vec![ZiCRecord::ZiFNew(None, json!({"text": "a1Z"}))];
-        let out = op.apply(batch).unwrap();
-        let text = out[0].payload["text"].as_str().unwrap();
-        assert_ne!(text, "a1Z");
-    }
-}

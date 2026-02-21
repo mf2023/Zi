@@ -130,7 +130,7 @@ impl ZiCStreamReader {
         let mut batch = Vec::with_capacity(self.config.batch_size);
         let mut error_count = 0;
         let mut records_read = 0;
-        let _bytes_read = 0;
+        let mut bytes_read = 0;
 
         for (idx, line) in reader.lines().enumerate() {
             match line {
@@ -215,7 +215,7 @@ impl ZiCStreamReader {
         let mut batch = Vec::with_capacity(self.config.batch_size);
         let mut error_count = 0;
         let mut records_read = 0;
-        let mut bytes_read = 0;
+        let bytes_read = 0;
 
         for (idx, result) in csv_reader.records().enumerate() {
             match result {

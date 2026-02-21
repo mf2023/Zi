@@ -250,8 +250,7 @@ impl<P: ZiCSamplePayload> ZiCSampleBatchIter<P> for ZiCSampleBatch<P> {
 #[cfg(feature = "parquet")]
 mod arrow_support {
     use super::*;
-    use arrow2::array::{Array, StructArray};
-    use arrow2::datatypes::{DataType, Field};
+    use arrow2::array::StructArray;
 
     impl<P: ZiCSamplePayload> ZiCSample<P> {
         pub fn zi_to_arrow(&self) -> Result<StructArray, ZiCSampleError> {

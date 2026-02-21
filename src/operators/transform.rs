@@ -23,14 +23,14 @@ use crate::operators::filter::ZiCFieldPath;
 use crate::record::ZiCRecordBatch;
 
 #[derive(Debug)]
-struct _TransformNormalize {
+pub struct _TransformNormalize {
     path: ZiCFieldPath,
     lowercase: bool,
 }
 
 impl _TransformNormalize {
     #[allow(non_snake_case)]
-    fn ZiFNew(path: ZiCFieldPath, lowercase: bool) -> Self {
+    pub fn ZiFNew(path: ZiCFieldPath, lowercase: bool) -> Self {
         Self { path, lowercase }
     }
 
@@ -76,16 +76,4 @@ pub fn ZiFTransformNormalizeFactory(config: &Value) -> Result<Box<dyn ZiCOperato
     Ok(Box::new(_TransformNormalize::ZiFNew(field_path, lowercase)))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::record::ZiCRecord;
-    use serde_json::json;
-    #[test]
-    fn normalize_basic() {
-        let op = _TransformNormalize::ZiFNew(ZiCFieldPath::ZiFParse("payload.text").unwrap(), true);
-        let rec = ZiCRecord::ZiFNew(None, json!({"text": "  Hello   WORLD "}));
-        let out = op.apply(vec![rec]).unwrap();
-        assert_eq!(out[0].payload["text"], json!("hello world"));
-    }
-}
+

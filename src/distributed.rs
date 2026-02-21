@@ -120,7 +120,6 @@ impl ZiCDistributedCluster {
             pipelines: Arc::new(Mutex::new(HashMap::new())),
             tasks: Arc::new(Mutex::new(Vec::new())),
             results: Arc::new(Mutex::new(HashMap::new())),
-            request_id_counter: Arc::new(Mutex::new(0)),
         }
     }
 

@@ -1,5 +1,0 @@
-{"id": "a1", "payload": {"text": "A quick brown fox jumps over the lazy dog"}}
-{"id": "a2", "payload": {"text": "A quick brown fox jumps over a lazy dog"}}
-{"id": "a3", "payload": {"text": "Quick brown fox jumps over lazy dog"}}
-{"id": "b1", "payload": {"text": "Completely unrelated sentence about databases"}}
-{"id": "b2", "payload": {"text": "Another line talking about neural networks"}}
