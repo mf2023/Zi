@@ -22,9 +22,9 @@ use rand::SeedableRng;
 use serde_json::Value;
 
 use crate::errors::{Result, ZiError};
-use crate::operator::ZiCOperator;
-use crate::operators::filter::ZiCFieldPath;
-use crate::record::ZiCRecordBatch;
+use crate::operator::ZiOperator;
+use crate::operators::filter::ZiFieldPath;
+use crate::record::ZiRecordBatch;
 
 #[derive(Debug, Clone)]
 pub struct _SynonymEntry {
@@ -34,14 +34,14 @@ pub struct _SynonymEntry {
 
 #[derive(Debug)]
 pub struct _AugmentSynonym {
-    path: ZiCFieldPath,
+    path: ZiFieldPath,
     synonyms: Vec<_SynonymEntry>,
     seed: u64,
 }
 
 impl _AugmentSynonym {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, synonyms: Vec<_SynonymEntry>, seed: u64) -> Self {
+    pub fn new(path: ZiFieldPath, synonyms: Vec<_SynonymEntry>, seed: u64) -> Self {
         Self {
             path,
             synonyms,
@@ -50,7 +50,7 @@ impl _AugmentSynonym {
     }
 
     #[allow(non_snake_case)]
-    fn ZiFReplace(&self, text: &str, rng: &mut SmallRng) -> String {
+    fn replace(&self, text: &str, rng: &mut SmallRng) -> String {
         if self.synonyms.is_empty() {
             return text.to_string();
         }
@@ -71,17 +71,17 @@ impl _AugmentSynonym {
     }
 }
 
-impl ZiCOperator for _AugmentSynonym {
+impl ZiOperator for _AugmentSynonym {
     fn name(&self) -> &'static str {
         "augment.synonym"
     }
 
-    fn apply(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, mut batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         let mut rng = SmallRng::seed_from_u64(self.seed);
         for record in &mut batch {
-            if let Some(Value::String(text)) = self.path.ZiFResolve(record) {
-                let augmented = self.ZiFReplace(text.as_str(), &mut rng);
-                let _ = self.path.ZiFSetValue(record, Value::String(augmented));
+            if let Some(Value::String(text)) = self.path.resolve(record) {
+                let augmented = self.replace(text.as_str(), &mut rng);
+                let _ = self.path.set_value(record, Value::String(augmented));
             }
         }
         Ok(batch)
@@ -89,7 +89,7 @@ impl ZiCOperator for _AugmentSynonym {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFAugmentSynonymFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn augment_synonym_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("augment.synonym config must be object"))?;
@@ -152,22 +152,22 @@ pub fn ZiFAugmentSynonymFactory(config: &Value) -> Result<Box<dyn ZiCOperator + 
         .and_then(Value::as_u64)
         .unwrap_or(0x1bad_b002);
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
-    Ok(Box::new(_AugmentSynonym::ZiFNew(
+    let field_path = ZiFieldPath::parse(path)?;
+    Ok(Box::new(_AugmentSynonym::new(
         field_path, synonyms, seed,
     )))
 }
 
 #[derive(Debug)]
 pub struct _AugmentNoise {
-    path: ZiCFieldPath,
+    path: ZiFieldPath,
     intensity: f64,
     seed: u64,
 }
 
 impl _AugmentNoise {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, intensity: f64, seed: u64) -> Self {
+    pub fn new(path: ZiFieldPath, intensity: f64, seed: u64) -> Self {
         Self {
             path,
             intensity,
@@ -176,15 +176,15 @@ impl _AugmentNoise {
     }
 }
 
-impl ZiCOperator for _AugmentNoise {
+impl ZiOperator for _AugmentNoise {
     fn name(&self) -> &'static str {
         "augment.noise"
     }
 
-    fn apply(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, mut batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         let mut rng = SmallRng::seed_from_u64(self.seed);
         for record in &mut batch {
-            if let Some(Value::String(text)) = self.path.ZiFResolve(record) {
+            if let Some(Value::String(text)) = self.path.resolve(record) {
                 let toggled = text
                     .chars()
                     .map(|ch| {
@@ -201,7 +201,7 @@ impl ZiCOperator for _AugmentNoise {
                         }
                     })
                     .collect::<String>();
-                let _ = self.path.ZiFSetValue(record, Value::String(toggled));
+                let _ = self.path.set_value(record, Value::String(toggled));
             }
         }
         Ok(batch)
@@ -209,7 +209,7 @@ impl ZiCOperator for _AugmentNoise {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFAugmentNoiseFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn augment_noise_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("augment.noise config must be object"))?;
@@ -232,8 +232,8 @@ pub fn ZiFAugmentNoiseFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Se
         .and_then(Value::as_u64)
         .unwrap_or(0xfeed_f00d);
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
-    Ok(Box::new(_AugmentNoise::ZiFNew(field_path, intensity, seed)))
+    let field_path = ZiFieldPath::parse(path)?;
+    Ok(Box::new(_AugmentNoise::new(field_path, intensity, seed)))
 }
 
 

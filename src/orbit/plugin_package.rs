@@ -15,6 +15,19 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # Plugin Package Module
+//!
+//! This module provides functionality for loading and validating plugin packages
+//! in ZiOrbit. Plugin packages are ZIP archives containing compiled plugins and
+//! their metadata.
+//!
+//! ## Package Format
+//!
+//! A plugin package (.zip) contains:
+//! - Compiled plugin binary
+//! - Package manifest (metadata.json)
+//! - Digital signature for verification
+
 use std::fs;
 use std::io::Read;
 use std::path::Path;
@@ -26,11 +39,11 @@ use zip::ZipArchive;
 
 use crate::errors::{Result, ZiError};
 use crate::orbit::runtime::{
-    ZiCDataVisibility,
-    ZiCPluginDescriptor,
-    ZiCPluginExport,
-    ZiCPluginExportKind,
-    ZiCPluginPolicy,
+    ZiDataVisibility,
+    ZiPluginDescriptor,
+    ZiPluginExport,
+    ZiPluginExportKind,
+    ZiPluginPolicy,
 };
 
 /// Zi Orbit Plugin Package Structure Specification
@@ -90,19 +103,19 @@ use crate::orbit::runtime::{
 /// ```
 
 #[derive(Debug, Deserialize)]
-struct ZiCPluginExportFile {
+struct ZiPluginExportFile {
     kind: String,
     name: String,
     #[serde(default)]
     script: Option<String>,
 }
 
-impl ZiCPluginExportFile {
-    fn into_runtime(self) -> Result<ZiCPluginExport> {
+impl ZiPluginExportFile {
+    fn into_runtime(self) -> Result<ZiPluginExport> {
         let kind = match self.kind.to_ascii_lowercase().as_str() {
-            "operator" => ZiCPluginExportKind::Operator,
-            "capability" => ZiCPluginExportKind::Capability,
-            "hook" => ZiCPluginExportKind::Hook,
+            "operator" => ZiPluginExportKind::Operator,
+            "capability" => ZiPluginExportKind::Capability,
+            "hook" => ZiPluginExportKind::Hook,
             other => {
                 return Err(ZiError::validation(format!(
                     "unknown export kind: {}",
@@ -110,7 +123,7 @@ impl ZiCPluginExportFile {
                 )));
             }
         };
-        Ok(ZiCPluginExport {
+        Ok(ZiPluginExport {
             kind,
             name: self.name,
             script: self.script,
@@ -120,7 +133,7 @@ impl ZiCPluginExportFile {
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
-struct ZiCPluginPolicyFile {
+struct ZiPluginPolicyFile {
     allowed_capabilities: Vec<String>,
     can_access_versions: bool,
     allowed_file_paths: Vec<String>,
@@ -137,14 +150,14 @@ struct ZiCPluginPolicyFile {
     role: Option<String>,
 }
 
-impl ZiCPluginPolicyFile {
-    fn into_runtime(self) -> ZiCPluginPolicy {
-        ZiCPluginPolicy {
+impl ZiPluginPolicyFile {
+    fn into_runtime(self) -> ZiPluginPolicy {
+        ZiPluginPolicy {
             allowed_capabilities: self.allowed_capabilities,
             can_access_versions: self.can_access_versions,
-            default_visibility: ZiCDataVisibility::default(),
+            default_visibility: ZiDataVisibility::default(),
             role: self.role,
-            sandbox: crate::orbit::runtime::ZiCSandboxConfig {
+            sandbox: crate::orbit::runtime::ZiSandboxConfig {
                 max_cpu_percent: self.max_cpu_percent,
                 max_memory_mb: self.max_memory_mb,
                 max_threads: self.max_threads,
@@ -162,7 +175,7 @@ impl ZiCPluginPolicyFile {
 }
 
 #[derive(Debug, Deserialize)]
-struct ZiCPluginDependencyFile {
+struct ZiPluginDependencyFile {
     plugin_id: String,
     #[serde(default)]
     min_version: Option<String>,
@@ -176,21 +189,21 @@ fn default_required() -> bool {
     true
 }
 
-impl ZiCPluginDependencyFile {
-    fn into_runtime(self) -> Result<crate::orbit::runtime::ZiCPluginDependency> {
-        use crate::orbit::runtime::ZiCPluginVersion;
+impl ZiPluginDependencyFile {
+    fn into_runtime(self) -> Result<crate::orbit::runtime::ZiPluginDependency> {
+        use crate::orbit::runtime::ZiPluginVersion;
         
         let min_version = match self.min_version {
-            Some(v) => Some(ZiCPluginVersion::parse(&v)?),
+            Some(v) => Some(ZiPluginVersion::parse(&v)?),
             None => None,
         };
         
         let max_version = match self.max_version {
-            Some(v) => Some(ZiCPluginVersion::parse(&v)?),
+            Some(v) => Some(ZiPluginVersion::parse(&v)?),
             None => None,
         };
         
-        Ok(crate::orbit::runtime::ZiCPluginDependency {
+        Ok(crate::orbit::runtime::ZiPluginDependency {
             plugin_id: self.plugin_id,
             min_version,
             max_version,
@@ -200,22 +213,22 @@ impl ZiCPluginDependencyFile {
 }
 
 #[derive(Debug, Deserialize)]
-struct ZiCPluginFile {
+struct ZiPluginFile {
     id: String,
     #[serde(default = "default_version")]
     version: String,
-    exports: Vec<ZiCPluginExportFile>,
+    exports: Vec<ZiPluginExportFile>,
     #[serde(default)]
-    policy: ZiCPluginPolicyFile,
+    policy: ZiPluginPolicyFile,
     #[serde(default)]
     visibility: Option<String>,
     #[serde(default)]
-    dependencies: Vec<ZiCPluginDependencyFile>,
+    dependencies: Vec<ZiPluginDependencyFile>,
 }
 
 /// Plugin signature file structure
 #[derive(Debug, Deserialize)]
-struct ZiCPluginSignatureFile {
+struct ZiPluginSignatureFile {
     /// Signature algorithm used (e.g., "sha256-rsa")
     algorithm: String,
     /// Timestamp when the signature was created
@@ -226,7 +239,7 @@ struct ZiCPluginSignatureFile {
     public_key: String,
 }
 
-impl ZiCPluginSignatureFile {
+impl ZiPluginSignatureFile {
     /// Verifies the signature of a single file
     fn verify_file(&self, file_path: &str, file_content: &[u8]) -> Result<bool> {
         // Check if we have a signature for this file
@@ -312,9 +325,9 @@ fn default_version() -> String {
     "1.0.0".to_string()
 }
 
-impl ZiCPluginFile {
-    fn into_runtime(self) -> Result<ZiCPluginDescriptor> {
-        use crate::orbit::runtime::{ZiCPluginVersion, ZiCPluginState};
+impl ZiPluginFile {
+    fn into_runtime(self) -> Result<ZiPluginDescriptor> {
+        use crate::orbit::runtime::{ZiPluginVersion, ZiPluginState};
         
         let exports = self
             .exports
@@ -331,34 +344,34 @@ impl ZiCPluginFile {
         let mut policy = self.policy.into_runtime();
         if let Some(vis) = self.visibility {
             let parsed = match vis.to_ascii_lowercase().as_str() {
-                "full" => ZiCDataVisibility::Full,
-                "mask" | "mask_sensitive" => ZiCDataVisibility::MaskSensitive,
-                _ => ZiCDataVisibility::default(),
+                "full" => ZiDataVisibility::Full,
+                "mask" | "mask_sensitive" => ZiDataVisibility::MaskSensitive,
+                _ => ZiDataVisibility::default(),
             };
             policy.default_visibility = parsed;
         }
         
-        let version = ZiCPluginVersion::parse(&self.version)?;
+        let version = ZiPluginVersion::parse(&self.version)?;
         
-        Ok(ZiCPluginDescriptor {
+        Ok(ZiPluginDescriptor {
             id: self.id,
             version,
             exports,
             policy,
             dependencies,
-            state: ZiCPluginState::Loaded,
+            state: ZiPluginState::Loaded,
             load_time: std::time::SystemTime::now(),
         })
     }
 }
 
 /// Loads a plugin descriptor from a file path, supporting both directory and ZIP/ZOP files.
-pub fn ZiFLoadPluginDescriptorFromPath(path: &Path) -> Result<ZiCPluginDescriptor> {
+pub fn load_plugin_descriptor_from_path(path: &Path) -> Result<ZiPluginDescriptor> {
     if path.is_dir() {
         // Load from directory
         let meta_path = path.join("orbit_plugin.json");
         let text = fs::read_to_string(&meta_path)?;
-        let file: ZiCPluginFile = serde_json::from_str(&text)?;
+        let file: ZiPluginFile = serde_json::from_str(&text)?;
         file.into_runtime()
     } else {
         // Check if it's a ZIP file
@@ -373,12 +386,12 @@ pub fn ZiFLoadPluginDescriptorFromPath(path: &Path) -> Result<ZiCPluginDescripto
             let mut text = String::new();
             meta_file.read_to_string(&mut text)?;
             
-            let file: ZiCPluginFile = serde_json::from_str(&text)?;
+            let file: ZiPluginFile = serde_json::from_str(&text)?;
             file.into_runtime()
         } else {
             // Assume it's a standalone orbit_plugin.json file
             let text = fs::read_to_string(path)?;
-            let file: ZiCPluginFile = serde_json::from_str(&text)?;
+            let file: ZiPluginFile = serde_json::from_str(&text)?;
             file.into_runtime()
         }
     }
@@ -386,7 +399,7 @@ pub fn ZiFLoadPluginDescriptorFromPath(path: &Path) -> Result<ZiCPluginDescripto
 
 /// Extracts a file from a ZIP plugin package.
 #[allow(dead_code)]
-pub fn ZiFExtractFileFromPluginPackage(
+pub fn extract_file_from_plugin_package(
     path: &Path,
     file_path: &str
 ) -> Result<Vec<u8>> {
@@ -401,7 +414,7 @@ pub fn ZiFExtractFileFromPluginPackage(
 }
 
 /// Validates a plugin package structure, including optional signature verification.
-pub fn ZiFValidatePluginPackage(path: &Path) -> Result<()> {
+pub fn validate_plugin_package(path: &Path) -> Result<()> {
     if path.is_dir() {
         // Validate directory structure
         let meta_path = path.join("orbit_plugin.json");
@@ -413,13 +426,13 @@ pub fn ZiFValidatePluginPackage(path: &Path) -> Result<()> {
         
         // Read and parse the metadata file to validate its content
         let text = fs::read_to_string(&meta_path)?;
-        let _file: ZiCPluginFile = serde_json::from_str(&text)?;
+        let _file: ZiPluginFile = serde_json::from_str(&text)?;
         
         // Check for signature file and validate if present
         let signature_path = path.join("signatures/signature.json");
         if signature_path.exists() {
             let signature_text = fs::read_to_string(&signature_path)?;
-            let signature: ZiCPluginSignatureFile = serde_json::from_str(&signature_text)?;
+            let signature: ZiPluginSignatureFile = serde_json::from_str(&signature_text)?;
             
             // Validate the signature file itself
             signature.validate()?;
@@ -467,7 +480,7 @@ pub fn ZiFValidatePluginPackage(path: &Path) -> Result<()> {
             let mut meta_file = zip.by_name("orbit_plugin.json")?;
             let mut text = String::new();
             meta_file.read_to_string(&mut text)?;
-            let _file: ZiCPluginFile = serde_json::from_str(&text)?;
+            let _file: ZiPluginFile = serde_json::from_str(&text)?;
         }
         
         // Check for signature file and validate if present
@@ -483,7 +496,7 @@ pub fn ZiFValidatePluginPackage(path: &Path) -> Result<()> {
         
         // If signature file exists, verify signatures
         if signature_exists {
-            let signature: ZiCPluginSignatureFile = serde_json::from_str(&signature_text)?;
+            let signature: ZiPluginSignatureFile = serde_json::from_str(&signature_text)?;
             
             // Validate the signature file itself
             signature.validate()?;

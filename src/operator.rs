@@ -16,23 +16,23 @@
 //! limitations under the License.
 
 use crate::errors::{Result, ZiError};
-use crate::record::ZiCRecordBatch;
+use crate::record::ZiRecordBatch;
 
 /// Contracts that every Zi Core operator must fulfill.
-pub trait ZiCOperator: std::fmt::Debug {
+pub trait ZiOperator: std::fmt::Debug {
     /// Unique, human-readable name for the operator.
     fn name(&self) -> &'static str;
 
     /// Applies the operator to an incoming batch of records.
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch>;
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch>;
 }
 
 /// Convenience helper to execute an operator while normalizing errors.
 #[allow(non_snake_case)]
-pub fn ZiFExecuteOperator(
-    operator: &dyn ZiCOperator,
-    batch: ZiCRecordBatch,
-) -> Result<ZiCRecordBatch> {
+pub fn execute_operator(
+    operator: &dyn ZiOperator,
+    batch: ZiRecordBatch,
+) -> Result<ZiRecordBatch> {
     operator
         .apply(batch)
         .map_err(|err| ZiError::operator(operator.name(), err.to_string()))

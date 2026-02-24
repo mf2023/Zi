@@ -22,21 +22,21 @@ use regex::{Captures, Regex};
 use serde_json::{Map, Value};
 
 use crate::errors::{Result, ZiError};
-use crate::operator::ZiCOperator;
-use crate::operators::filter::ZiCFieldPath;
-use crate::record::ZiCRecordBatch;
+use crate::operator::ZiOperator;
+use crate::operators::filter::ZiFieldPath;
+use crate::record::ZiRecordBatch;
 
 #[derive(Debug, Clone)]
-pub struct ZiCPiiRule {
+pub struct ZiPiiRule {
     tag: String,
     pattern: Regex,
-    strategy: ZiCPiiStrategy,
+    strategy: ZiPiiStrategy,
     context_window: usize,
     store_original: bool,
 }
 
 #[derive(Debug, Clone)]
-pub enum ZiCPiiStrategy {
+pub enum ZiPiiStrategy {
     Placeholder(String),
     Mask {
         mask_char: char,
@@ -51,7 +51,7 @@ pub enum ZiCPiiStrategy {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct ZiCPiiMatch {
+pub struct ZiPiiMatch {
     pub tag: String,
     pub original: Option<String>,
     pub redacted: String,
@@ -60,18 +60,18 @@ pub struct ZiCPiiMatch {
 }
 
 #[derive(Debug)]
-pub struct ZiCPiiRedact {
-    path: ZiCFieldPath,
-    rules: Vec<ZiCPiiRule>,
+pub struct ZiPiiRedact {
+    path: ZiFieldPath,
+    rules: Vec<ZiPiiRule>,
     store_map_key: Option<String>,
     allowlist: HashSet<String>,
 }
 
-impl ZiCPiiRedact {
+impl ZiPiiRedact {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(
-        path: ZiCFieldPath,
-        rules: Vec<ZiCPiiRule>,
+    pub fn new(
+        path: ZiFieldPath,
+        rules: Vec<ZiPiiRule>,
         store_map_key: Option<String>,
         allowlist: HashSet<String>,
     ) -> Self {
@@ -83,7 +83,7 @@ impl ZiCPiiRedact {
         }
     }
 
-    fn redact_text(&self, text: &str) -> (String, Vec<ZiCPiiMatch>) {
+    fn redact_text(&self, text: &str) -> (String, Vec<ZiPiiMatch>) {
         let mut output = text.to_string();
         let mut matches = Vec::new();
         for rule in &self.rules {
@@ -100,13 +100,13 @@ impl ZiCPiiRedact {
                         continue;
                     }
                     let redacted = match &rule.strategy {
-                        ZiCPiiStrategy::Placeholder(token) => token.clone(),
-                        ZiCPiiStrategy::Mask {
+                        ZiPiiStrategy::Placeholder(token) => token.clone(),
+                        ZiPiiStrategy::Mask {
                             mask_char,
                             prefix,
                             suffix,
                         } => _mask_value(original, *mask_char, *prefix, *suffix),
-                        ZiCPiiStrategy::Hash {
+                        ZiPiiStrategy::Hash {
                             salt,
                             prefix,
                             suffix,
@@ -117,7 +117,7 @@ impl ZiCPiiRedact {
                     } else {
                         None
                     };
-                    matches.push(ZiCPiiMatch {
+                    matches.push(ZiPiiMatch {
                         tag: rule.tag.clone(),
                         original: rule.store_original.then(|| original.to_string()),
                         redacted: redacted.clone(),
@@ -135,20 +135,20 @@ impl ZiCPiiRedact {
     }
 }
 
-impl ZiCOperator for ZiCPiiRedact {
+impl ZiOperator for ZiPiiRedact {
     fn name(&self) -> &'static str {
         "pii.redact"
     }
 
-    fn apply(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, mut batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         for record in &mut batch {
-            let Some(Value::String(text)) = self.path.ZiFResolve(record) else {
+            let Some(Value::String(text)) = self.path.resolve(record) else {
                 continue;
             };
             let (redacted, matches) = self.redact_text(text);
             let _ = self
                 .path
-                .ZiFSetValue(record, Value::String(redacted.clone()));
+                .set_value(record, Value::String(redacted.clone()));
             if let Some(key) = &self.store_map_key {
                 if !matches.is_empty() {
                     let entries: Vec<Value> = matches
@@ -167,7 +167,7 @@ impl ZiCOperator for ZiCPiiRedact {
                             Value::Object(obj)
                         })
                         .collect();
-                    let metadata = record.ZiFMetadataMut();
+                    let metadata = record.metadata_mut();
                     let target = metadata
                         .entry(key.clone())
                         .or_insert_with(|| Value::Array(Vec::new()));
@@ -184,7 +184,7 @@ impl ZiCOperator for ZiCPiiRedact {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFPiiRedactFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn pii_redact_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("pii.redact config must be object"))?;
@@ -207,8 +207,8 @@ pub fn ZiFPiiRedactFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send 
         .and_then(Value::as_array)
         .map(|arr| _parse_allowlist(arr))
         .unwrap_or_default();
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
-    Ok(Box::new(ZiCPiiRedact::ZiFNew(
+    let field_path = ZiFieldPath::parse(path)?;
+    Ok(Box::new(ZiPiiRedact::new(
         field_path, rules, store_key, allowlist,
     )))
 }
@@ -289,28 +289,28 @@ fn _extract_window(capture: &Captures, text: &str, window: usize) -> String {
     }
 }
 
-fn _strategy_name(strategy: &ZiCPiiStrategy) -> String {
+fn _strategy_name(strategy: &ZiPiiStrategy) -> String {
     match strategy {
-        ZiCPiiStrategy::Placeholder(_) => "placeholder".into(),
-        ZiCPiiStrategy::Mask { .. } => "mask".into(),
-        ZiCPiiStrategy::Hash { .. } => "hash".into(),
+        ZiPiiStrategy::Placeholder(_) => "placeholder".into(),
+        ZiPiiStrategy::Mask { .. } => "mask".into(),
+        ZiPiiStrategy::Hash { .. } => "hash".into(),
     }
 }
 
-fn _default_rules() -> Vec<ZiCPiiRule> {
+fn _default_rules() -> Vec<ZiPiiRule> {
     vec![
-        ZiCPiiRule {
+        ZiPiiRule {
             tag: "email".into(),
             pattern: Regex::new(r"(?i)[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}").unwrap(),
-            strategy: ZiCPiiStrategy::Placeholder("<EMAIL>".into()),
+            strategy: ZiPiiStrategy::Placeholder("<EMAIL>".into()),
             context_window: 12,
             store_original: true,
         },
-        ZiCPiiRule {
+        ZiPiiRule {
             tag: "phone".into(),
             pattern: Regex::new(r"(?i)\b(?:\+?\d{1,3}[ -]?)?(?:\(?\d{2,4}\)?[ -]?)?\d{7,12}\b")
                 .unwrap(),
-            strategy: ZiCPiiStrategy::Mask {
+            strategy: ZiPiiStrategy::Mask {
                 mask_char: '*',
                 prefix: 2,
                 suffix: 2,
@@ -318,10 +318,10 @@ fn _default_rules() -> Vec<ZiCPiiRule> {
             context_window: 6,
             store_original: false,
         },
-        ZiCPiiRule {
+        ZiPiiRule {
             tag: "card".into(),
             pattern: Regex::new(r"(?i)\b(?:\d[ -]?){13,19}\b").unwrap(),
-            strategy: ZiCPiiStrategy::Mask {
+            strategy: ZiPiiStrategy::Mask {
                 mask_char: '#',
                 prefix: 4,
                 suffix: 2,
@@ -329,17 +329,17 @@ fn _default_rules() -> Vec<ZiCPiiRule> {
             context_window: 4,
             store_original: false,
         },
-        ZiCPiiRule {
+        ZiPiiRule {
             tag: "url".into(),
             pattern: Regex::new(r"(?i)https?://[\w.-/?#%=&]+").unwrap(),
-            strategy: ZiCPiiStrategy::Placeholder("<URL>".into()),
+            strategy: ZiPiiStrategy::Placeholder("<URL>".into()),
             context_window: 16,
             store_original: false,
         },
     ]
 }
 
-fn _parse_rule(value: &Value) -> Result<ZiCPiiRule> {
+fn _parse_rule(value: &Value) -> Result<ZiPiiRule> {
     let obj = value
         .as_object()
         .ok_or_else(|| ZiError::validation("pii rule must be object"))?;
@@ -376,17 +376,17 @@ fn _parse_rule(value: &Value) -> Result<ZiCPiiRule> {
     let regex = Regex::new(pattern)
         .map_err(|err| ZiError::validation(format!("invalid pii pattern '{pattern}': {err}")))?;
     let strategy = match strategy {
-        "placeholder" => ZiCPiiStrategy::Placeholder(
+        "placeholder" => ZiPiiStrategy::Placeholder(
             placeholder
                 .map(str::to_string)
                 .unwrap_or_else(|| format!("<{}>", tag.to_ascii_uppercase())),
         ),
-        "mask" => ZiCPiiStrategy::Mask {
+        "mask" => ZiPiiStrategy::Mask {
             mask_char,
             prefix,
             suffix,
         },
-        "hash" => ZiCPiiStrategy::Hash {
+        "hash" => ZiPiiStrategy::Hash {
             salt,
             prefix,
             suffix,
@@ -397,7 +397,7 @@ fn _parse_rule(value: &Value) -> Result<ZiCPiiRule> {
             )))
         }
     };
-    Ok(ZiCPiiRule {
+    Ok(ZiPiiRule {
         tag,
         pattern: regex,
         strategy,

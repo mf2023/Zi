@@ -26,17 +26,16 @@ on:
     branches: [main, master]
   workflow_dispatch:
     inputs:
-# TODO: Enable when Python bindings are ready
-#      publish_pypi:
-#        description: 'Publish to PyPI'
-#        required: false
-#        default: false
-#        type: boolean
-#      publish_test_pypi:
-#        description: 'Publish to TestPyPI'
-#        required: false
-#        default: false
-#        type: boolean
+      publish_pypi:
+        description: 'Publish to PyPI'
+        required: false
+        default: false
+        type: boolean
+      publish_test_pypi:
+        description: 'Publish to TestPyPI'
+        required: false
+        default: false
+        type: boolean
       publish_crates:
         description: 'Publish to crates.io'
         required: false
@@ -250,306 +249,311 @@ jobs:
       - name: Run Rust tests
         run: cargo test --release --features full --no-fail-fast -- --test-threads=4
 
-# TODO: Enable when Python bindings are ready
-#  build-wheels-linux:
-#    needs: [build-rust-linux-x64]
-#    runs-on: ubuntu-latest
-#    strategy:
-#      matrix:
-#        python: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
-#    steps:
-#      - name: Checkout Zi
-#        uses: actions/checkout@v4
-#
-#      - name: Install system dependencies
-#        run: |
-#          sudo apt-get update
-#          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
-#
-#      - name: Install Rust toolchain
-#        uses: dtolnay/rust-toolchain@stable
-#
-#      - name: Setup Python
-#        uses: actions/setup-python@v5
-#        with:
-#          python-version: ${{ matrix.python }}
-#
-#      - name: Install maturin
-#        run: pip install maturin[patchelf]
-#
-#      - name: Cache cargo
-#        uses: actions/cache@v4
-#        with:
-#          path: |
-#            ~/.cargo/registry
-#            ~/.cargo/git
-#            target
-#          key: ${{ runner.os }}-wheel-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
-#          restore-keys: |
-#            ${{ runner.os }}-wheel-${{ matrix.python }}-
-#
-#      - name: Build wheel
-#        run: maturin build --release --features pyo3 --interpreter python${{ matrix.python }} --out dist
-#
-#      - name: Upload wheel
-#        uses: actions/upload-artifact@v4
-#        with:
-#          name: zi-wheel-linux-${{ matrix.python }}
-#          path: dist/*.whl
-#          retention-days: 7
-#
-#  build-wheels-linux-arm64:
-#    needs: [build-rust-linux-arm64]
-#    runs-on: ubuntu-latest
-#    strategy:
-#      matrix:
-#        python: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
-#    steps:
-#      - name: Checkout Zi
-#        uses: actions/checkout@v4
-#
-#      - name: Install system dependencies
-#        run: |
-#          sudo apt-get update
-#          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-#
-#      - name: Install Rust toolchain
-#        uses: dtolnay/rust-toolchain@stable
-#        with:
-#          targets: aarch64-unknown-linux-gnu
-#
-#      - name: Setup Python
-#        uses: actions/setup-python@v5
-#        with:
-#          python-version: ${{ matrix.python }}
-#
-#      - name: Install maturin
-#        run: pip install maturin[patchelf]
-#
-#      - name: Cache cargo
-#        uses: actions/cache@v4
-#        with:
-#          path: |
-#            ~/.cargo/registry
-#            ~/.cargo/git
-#            target
-#          key: ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
-#          restore-keys: |
-#            ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-
-#
-#      - name: Build wheel
-#        env:
-#          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-#        run: maturin build --release --features pyo3 --target aarch64-unknown-linux-gnu --interpreter python${{ matrix.python }} --out dist
-#
-#      - name: Upload wheel
-#        uses: actions/upload-artifact@v4
-#        with:
-#          name: zi-wheel-linux-arm64-${{ matrix.python }}
-#          path: dist/*.whl
-#          retention-days: 7
-#
-#  build-wheels-windows:
-#    needs: [build-rust-windows-x64]
-#    runs-on: windows-latest
-#    strategy:
-#      matrix:
-#        python: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
-#    steps:
-#      - name: Checkout Zi
-#        uses: actions/checkout@v4
-#
-#      - name: Install Rust toolchain
-#        uses: dtolnay/rust-toolchain@stable
-#
-#      - name: Setup Python
-#        uses: actions/setup-python@v5
-#        with:
-#          python-version: ${{ matrix.python }}
-#
-#      - name: Install maturin
-#        run: pip install maturin
-#
-#      - name: Cache cargo
-#        uses: actions/cache@v4
-#        with:
-#          path: |
-#            ~/.cargo/registry
-#            ~/.cargo/git
-#            target
-#          key: ${{ runner.os }}-wheel-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
-#          restore-keys: |
-#            ${{ runner.os }}-wheel-${{ matrix.python }}-
-#
-#      - name: Build wheel
-#        run: maturin build --release --features pyo3 --interpreter python --out dist
-#
-#      - name: Upload wheel
-#        uses: actions/upload-artifact@v4
-#        with:
-#          name: zi-wheel-windows-${{ matrix.python }}
-#          path: dist/*.whl
-#          retention-days: 7
-#
-#  build-wheels-macos-x64:
-#    needs: [build-rust-macos-x64]
-#    runs-on: macos-latest
-#    strategy:
-#      matrix:
-#        python: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
-#    steps:
-#      - name: Checkout Zi
-#        uses: actions/checkout@v4
-#
-#      - name: Install Rust toolchain
-#        uses: dtolnay/rust-toolchain@stable
-#
-#      - name: Setup Python
-#        uses: actions/setup-python@v5
-#        with:
-#          python-version: ${{ matrix.python }}
-#
-#      - name: Install maturin
-#        run: pip install maturin
-#
-#      - name: Cache cargo
-#        uses: actions/cache@v4
-#        with:
-#          path: |
-#            ~/.cargo/registry
-#            ~/.cargo/git
-#            target
-#          key: ${{ runner.os }}-wheel-x64-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
-#          restore-keys: |
-#            ${{ runner.os }}-wheel-x64-${{ matrix.python }}-
-#
-#      - name: Build wheel
-#        run: maturin build --release --features pyo3 --interpreter python${{ matrix.python }} --out dist
-#
-#      - name: Upload wheel
-#        uses: actions/upload-artifact@v4
-#        with:
-#          name: zi-wheel-macos-x64-${{ matrix.python }}
-#          path: dist/*.whl
-#          retention-days: 7
-#
-#  build-wheels-macos-arm64:
-#    needs: [build-rust-macos-arm64]
-#    runs-on: macos-latest
-#    strategy:
-#      matrix:
-#        python: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
-#    steps:
-#      - name: Checkout Zi
-#        uses: actions/checkout@v4
-#
-#      - name: Install Rust toolchain
-#        uses: dtolnay/rust-toolchain@stable
-#        with:
-#          targets: aarch64-apple-darwin
-#
-#      - name: Setup Python
-#        uses: actions/setup-python@v5
-#        with:
-#          python-version: ${{ matrix.python }}
-#
-#      - name: Install maturin
-#        run: pip install maturin
-#
-#      - name: Cache cargo
-#        uses: actions/cache@v4
-#        with:
-#          path: |
-#            ~/.cargo/registry
-#            ~/.cargo/git
-#            target
-#          key: ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
-#          restore-keys: |
-#            ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-
-#
-#      - name: Build wheel
-#        env:
-#          RUSTFLAGS: "-C target-cpu=apple-m1"
-#        run: maturin build --release --features pyo3 --target aarch64-apple-darwin --interpreter python${{ matrix.python }} --out dist
-#
-#      - name: Upload wheel
-#        uses: actions/upload-artifact@v4
-#        with:
-#          name: zi-wheel-macos-arm64-${{ matrix.python }}
-#          path: dist/*.whl
-#          retention-days: 7
-#
-#  test-python:
-#    needs: [build-wheels-linux]
-#    runs-on: ubuntu-latest
-#    strategy:
-#      matrix:
-#        python: ['3.10', '3.11', '3.12', '3.13', '3.14']
-#    steps:
-#      - name: Checkout Zi
-#        uses: actions/checkout@v4
-#
-#      - name: Setup Python
-#        uses: actions/setup-python@v5
-#        with:
-#          python-version: ${{ matrix.python }}
-#
-#      - name: Download wheel
-#        uses: actions/download-artifact@v4
-#        with:
-#          name: zi-wheel-linux-${{ matrix.python }}
-#          path: dist
-#
-#      - name: Install wheel
-#        run: pip install dist/*.whl
-#
-#      - name: Test import
-#        run: python -c "import Zi; print('Zi imported successfully')"
-#
-#  publish-pypi:
-#    needs: [build-wheels-linux, build-wheels-linux-arm64, build-wheels-windows, build-wheels-macos-x64, build-wheels-macos-arm64, test-python]
-#    runs-on: ubuntu-latest
-#    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true')
-#    environment:
-#      name: pypi
-#      url: https://pypi.org/p/Zi
-#    permissions:
-#      id-token: write
-#    steps:
-#      - name: Download all wheels
-#        uses: actions/download-artifact@v4
-#        with:
-#          pattern: zi-wheel-*
-#          path: dist
-#          merge-multiple: true
-#
-#      - name: Publish to PyPI
-#        uses: pypa/gh-action-pypi-publish@release/v1
-#        with:
-#          skip-existing: true
-#
-#  publish-test-pypi:
-#    needs: [build-wheels-linux, build-wheels-windows, build-wheels-macos-x64, test-python]
-#    runs-on: ubuntu-latest
-#    if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish_test_pypi == 'true'
-#    environment:
-#      name: testpypi
-#      url: https://test.pypi.org/p/Zi
-#    permissions:
-#      id-token: write
-#    steps:
-#      - name: Download all wheels
-#        uses: actions/download-artifact@v4
-#        with:
-#          pattern: zi-wheel-*
-#          path: dist
-#          merge-multiple: true
-#
-#      - name: Publish to TestPyPI
-#        uses: pypa/gh-action-pypi-publish@release/v1
-#        with:
-#          repository-url: https://test.pypi.org/legacy/
-#          skip-existing: true
+  build-wheels-linux:
+    needs: [build-rust-linux-x64]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
+    steps:
+      - name: Checkout Zi
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install maturin
+        run: pip install maturin[patchelf]
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-wheel-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-wheel-${{ matrix.python }}-
+
+      - name: Build wheel
+        run: maturin build --release --features pyo3 --interpreter python${{ matrix.python }} --out dist
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: zi-wheel-linux-${{ matrix.python }}
+          path: dist/*.whl
+          retention-days: 7
+
+  build-wheels-linux-arm64:
+    needs: [build-rust-linux-arm64]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.10', '3.11', '3.12', '3.13']
+    steps:
+      - name: Checkout Zi
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install maturin
+        run: pip install maturin[patchelf]
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-
+
+      - name: Build wheel
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: maturin build --release --features pyo3 --target aarch64-unknown-linux-gnu --interpreter python${{ matrix.python }} --out dist
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: zi-wheel-linux-arm64-${{ matrix.python }}
+          path: dist/*.whl
+          retention-days: 7
+
+  build-wheels-windows:
+    needs: [build-rust-windows-x64]
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
+    steps:
+      - name: Checkout Zi
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-wheel-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-wheel-${{ matrix.python }}-
+
+      - name: Build wheel
+        run: maturin build --release --features pyo3 --interpreter python --out dist
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: zi-wheel-windows-${{ matrix.python }}
+          path: dist/*.whl
+          retention-days: 7
+
+  build-wheels-macos-x64:
+    needs: [build-rust-macos-x64]
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        python: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
+    steps:
+      - name: Checkout Zi
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-wheel-x64-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-wheel-x64-${{ matrix.python }}-
+
+      - name: Build wheel
+        run: maturin build --release --features pyo3 --interpreter python${{ matrix.python }} --out dist
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: zi-wheel-macos-x64-${{ matrix.python }}
+          path: dist/*.whl
+          retention-days: 7
+
+  build-wheels-macos-arm64:
+    needs: [build-rust-macos-arm64]
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        python: ['3.10', '3.11', '3.12', '3.13']
+    steps:
+      - name: Checkout Zi
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-
+
+      - name: Build wheel
+        env:
+          RUSTFLAGS: "-C target-cpu=apple-m1"
+        run: maturin build --release --features pyo3 --target aarch64-apple-darwin --interpreter python${{ matrix.python }} --out dist
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: zi-wheel-macos-arm64-${{ matrix.python }}
+          path: dist/*.whl
+          retention-days: 7
+
+  test-python:
+    needs: [build-wheels-linux]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.10', '3.11', '3.12', '3.13', '3.14']
+    steps:
+      - name: Checkout Zi
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Download wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: zi-wheel-linux-${{ matrix.python }}
+          path: dist
+
+      - name: Install wheel
+        run: pip install dist/*.whl
+
+      - name: Test import
+        run: python -c "import zix; print('Zi imported successfully')"
+
+      - name: Run core tests
+        run: python tests/python/test_core.py
+
+      - name: Run operator tests
+        run: python tests/python/test_operators.py
+
+  publish-pypi:
+    needs: [build-wheels-linux, build-wheels-linux-arm64, build-wheels-windows, build-wheels-macos-x64, build-wheels-macos-arm64, test-python]
+    runs-on: ubuntu-latest
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true')
+    environment:
+      name: pypi
+      url: https://pypi.org/p/Zi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download all wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: zi-wheel-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+
+  publish-test-pypi:
+    needs: [build-wheels-linux, build-wheels-windows, build-wheels-macos-x64, test-python]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish_test_pypi == 'true'
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/Zi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download all wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: zi-wheel-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
 
   publish-crates:
     needs: [build-rust-linux-x64, build-rust-windows-x64, build-rust-macos-x64, test-rust]

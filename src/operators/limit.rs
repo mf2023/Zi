@@ -18,39 +18,39 @@
 use serde_json::Value;
 
 use crate::errors::{Result, ZiError};
-use crate::operator::ZiCOperator;
-use crate::record::ZiCRecordBatch;
+use crate::operator::ZiOperator;
+use crate::record::ZiRecordBatch;
 
 /// Truncates the incoming batch to at most `count` records.
 #[derive(Debug)]
-pub struct ZiCLimit {
+pub struct ZiLimit {
     count: usize,
 }
 
-impl ZiCLimit {
+impl ZiLimit {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(count: usize) -> Self {
+    pub fn new(count: usize) -> Self {
         Self { count }
     }
 }
 
-impl ZiCOperator for ZiCLimit {
+impl ZiOperator for ZiLimit {
     fn name(&self) -> &'static str {
         "limit"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch.into_iter().take(self.count).collect())
     }
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFLimitFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn limit_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let count = config
         .get("count")
         .and_then(Value::as_u64)
         .ok_or_else(|| ZiError::validation("limit requires unsigned integer 'count'"))?;
 
-    Ok(Box::new(ZiCLimit::ZiFNew(count as usize)))
+    Ok(Box::new(ZiLimit::new(count as usize)))
 }
 

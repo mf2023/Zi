@@ -25,6 +25,7 @@ pub mod dag;
 pub mod operator;
 pub mod operators;
 pub mod pipeline;
+#[cfg(feature = "pyo3")]
 pub mod py;
 pub mod record;
 pub mod version;
@@ -40,24 +41,30 @@ pub mod enrich;
 pub mod dsl;
 
 pub use context::ZiContext;
-pub use metrics::{ZiCQualityMetrics, ZiCStatisticSummary};
+pub use metrics::{ZiQualityMetrics, ZiStatisticSummary};
 
-pub use ingest::{ZiCFormatDetector, ZiCDataFormat, ZiCStreamReader, ZiCReaderConfig, ZiCCompression, ZiCFormatInfo, ZiCRecordIterator, ProgressCallback, ProgressInfo};
+pub use errors::{Result, ZiError};
+pub use record::{ZiRecord, ZiMetadata, ZiRecordBatch};
+pub use operator::{ZiOperator, execute_operator};
+pub use pipeline::{ZiPipeline, ZiPipelineNode, ZiPipelineBuilder, ZiPipelineStageMetrics, ZiCacheConfig, ExecutionMode};
+pub use dag::{ZiDAG, ZiGraphNode, ZiNodeId, ZiGraphNodeConfig, ZiCheckpointState, ZiCheckpointStore, ZiSchedulerConfig, ZiScheduler, ZiOperatorFactoryTrait};
+
+pub use ingest::{ZiFormatDetector, ZiDataFormat, ZiStreamReader, ZiReaderConfig, ZiCompression, ZiFormatInfo, ZiRecordIterator, ProgressCallback, ProgressInfo};
 pub use inspect::{
-    ZiCProfileReport, ZiCProfiler, ZiCFieldProfile, ZiCAnomaly, 
-    ZiCDiffReport, ZiCDiffer, ZiCDiffChange, ZiCChangeType, ZiCStatistics, 
-    ZiCTextStatistics, ZiCProfilerConfig, ZiCDiffStats, ZiCFieldChange, ZiCRecordDiff,
+    ZiProfileReport, ZiProfiler, ZiFieldProfile, ZiAnomaly, 
+    ZiDiffReport, ZiDiffer, ZiDiffChange, ZiChangeType, ZiStatistics, 
+    ZiTextStatistics, ZiProfilerConfig, ZiDiffStats, ZiFieldChange, ZiRecordDiff,
 };
-pub use export::{ZiCStreamWriter, ZiCWriterConfig, ZiCManifest, ZiCManifestBuilder, ZiCOutputFormat, ZiCWriteStats, ZiCManifestFile, ZiCLineage};
+pub use export::{ZiStreamWriter, ZiWriterConfig, ZiManifest, ZiManifestBuilder, ZiOutputFormat, ZiWriteStats, ZiManifestFile, ZiLineage};
 pub use enrich::{
-    ZiCSynthesizer, ZiCSynthesisConfig, ZiCSynthesisMode, ZiCSynthesisRule,
-    ZiCAnnotator, ZiCAnnotationConfig, ZiCAugmenter, ZiCAugmentationConfig,
-    ZiCRuleType, ZiCTemplate, ZiCTemplateVariable, ZiCLLMSynthesisConfig,
+    ZiSynthesizer, ZiSynthesisConfig, ZiSynthesisMode, ZiSynthesisRule,
+    ZiAnnotator, ZiAnnotationConfig, ZiAugmenter, ZiAugmentationConfig,
+    ZiRuleType, ZiTemplate, ZiTemplateVariable, ZiLLMSynthesisConfig,
 };
-pub use dsl::{ZiCDSLParser, ZiCParseResult, ZiCDSLNode, ZiCDSLProgram, ZiCDSLCompiler, ZiCCompiledPipeline, ZiCDSLParserConfig};
+pub use dsl::{ZiDSLParser, ZiParseResult, ZiDSLNode, ZiDSLProgram, ZiDSLCompiler, ZiCompiledPipeline, ZiDSLParserConfig};
 
 pub use operators::llm::{
-    ZiCTokenCountConfig, ZiCConversationConfig, ZiCConversationFormat,
-    ZiCContextLengthConfig, ZiCContextLengthAction, ZiCQAExtractConfig, ZiCQAPattern,
-    ZiCInstructionFormatConfig, ZiCInstructionFormat,
+    ZiTokenCountConfig, ZiConversationConfig, ZiConversationFormat,
+    ZiContextLengthConfig, ZiContextLengthAction, ZiQAExtractConfig, ZiQAPattern,
+    ZiInstructionFormatConfig, ZiInstructionFormat,
 };

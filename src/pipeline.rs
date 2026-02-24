@@ -15,10 +15,46 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # Pipeline Execution Module
+//!
+//! This module provides the core pipeline execution engine for Zi, supporting
+//! complex data processing topologies with caching, parallelization, and instrumentation.
+//!
+//! ## Pipeline Architecture
+//!
+//! The pipeline system supports four node types:
+//! - **Operator**: Single transformation stage
+//! - **Sequence**: Linear chain of operators
+//! - **Conditional**: Branching based on predicate evaluation
+//! - **Parallel**: Concurrent execution across multiple workers
+//!
+//! ## Features
+//!
+//! - **Caching**: LRU eviction with TTL expiration for intermediate results
+//! - **Parallelization**: Thread-based and multi-process execution modes
+//! - **Instrumentation**: Per-stage metrics collection and timing analysis
+//! - **Versioning**: Integration with ZiVersionStore for reproducible pipelines
+//!
+//! ## Usage Example
+//!
+//! ```rust,no_run
+//! use zi::pipeline::{ZiPipeline, ZiCacheConfig};
+//! use zi::operators::filter::ZiFilterOperator;
+//!
+//! // Create a simple linear pipeline
+//! let pipeline = ZiPipeline::new(vec![
+//!     Box::new(ZiFilterOperator::new(...)),
+//! ]);
+//!
+//! // Run with caching
+//! let result = pipeline.run_cached(records).unwrap();
+//!
+//! // Run with parallelization
+//! let result = pipeline.run_parallel(records, 4).unwrap();
+//! ```
+
 use std::collections::HashMap;
 use std::ffi::{c_void, CStr};
-#[cfg(windows)]
-use std::io::Write;
 use std::os::raw::c_char;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -28,32 +64,41 @@ use std::time::{Duration, Instant};
 use serde_json::{Map, Value};
 
 use crate::errors::{Result, ZiError};
-use crate::metrics::{ZiCQualityMetrics, ZiCStatisticSummary};
-use crate::operator::{ZiCOperator, ZiFExecuteOperator};
-use crate::orbit::{ZiCInProcessOrbit, ZiCOrbit, ZiFOperatorFactory};
-use crate::record::ZiCRecordBatch;
+use crate::metrics::{ZiQualityMetrics, ZiStatisticSummary};
+use crate::operator::{ZiOperator, execute_operator};
+use crate::orbit::{ZiInProcessOrbit, ZiOrbit, OperatorFactory};
+use crate::record::ZiRecordBatch;
 use crate::version::{
-    ZiCCodeHash, ZiCEnvHash, ZiCTripleHash, ZiCVersion, ZiCVersionStore, ZiFComputeDataHash,
+    ZiCodeHash, ZiEnvHash, ZiTripleHash, ZiVersion, ZiVersionStore, compute_data_hash,
 };
 use libloading::Library;
 
-type OperatorFactory = ZiFOperatorFactory;
-
-/// Pipeline node types for supporting complex pipeline topologies.
-pub enum ZiCPipelineNode {
+/// Defines the structure of pipeline nodes supporting complex topologies.
+///
+/// Each variant represents a different execution pattern:
+/// - Operator: Single transformation step
+/// - Sequence: Ordered list of stages executed in order
+/// - Conditional: Branch based on predicate evaluation result
+/// - Parallel: Concurrent execution with worker threads
+pub enum ZiPipelineNode {
     /// A single operator stage
-    Operator(Box<dyn ZiCOperator + Send + Sync>),
+    Operator(Box<dyn ZiOperator + Send + Sync>),
     /// A sequence of nodes executed in order
-    Sequence(Vec<ZiCPipelineNode>),
+    Sequence(Vec<ZiPipelineNode>),
     /// A conditional branch that executes one of two branches based on a predicate
     Conditional {
-        predicate: Box<dyn ZiCOperator + Send + Sync>,
-        then_branch: Box<ZiCPipelineNode>,
-        else_branch: Box<ZiCPipelineNode>,
+        /// Operator that returns records to determine branch selection
+        predicate: Box<dyn ZiOperator + Send + Sync>,
+        /// Branch executed when predicate returns non-empty result
+        then_branch: Box<ZiPipelineNode>,
+        /// Branch executed when predicate returns empty result
+        else_branch: Box<ZiPipelineNode>,
     },
     /// Parallel branches that execute concurrently and merge results
     Parallel {
-        branches: Vec<ZiCPipelineNode>,
+        /// Individual execution branches
+        branches: Vec<ZiPipelineNode>,
+        /// Number of worker threads per branch
         num_workers: usize,
     },
 }
@@ -61,11 +106,14 @@ pub enum ZiCPipelineNode {
 // Remove manual Clone implementation for now
 // We'll use a different approach to handle pipeline execution
 
-/// Cache entry with expiration time
+/// Cache entry with expiration time and size tracking.
+///
+/// Used internally to manage cached pipeline results with
+/// LRU eviction policy and optional TTL expiration.
 #[derive(Debug, Clone)]
-struct ZiCCacheEntry {
+struct ZiCacheEntry {
     /// Cached records
-    records: ZiCRecordBatch,
+    records: ZiRecordBatch,
     /// Expiration time (None means never expires)
     expires_at: Option<std::time::Instant>,
     /// Last access time for LRU eviction
@@ -82,22 +130,32 @@ pub enum ExecutionMode {
     MultiProcess,
 }
 
-/// Enhanced pipeline supporting complex topologies.
-pub struct ZiCPipeline {
-    root: ZiCPipelineNode,
+/// Enhanced pipeline supporting complex topologies with caching and instrumentation.
+///
+/// This is the main entry point for executing data processing pipelines.
+/// It supports various execution modes including sequential, parallel (threaded/multi-process),
+/// and cached execution with automatic LRU eviction.
+pub struct ZiPipeline {
+    /// Root node defining the pipeline topology
+    root: ZiPipelineNode,
     /// Cache with expiration and size limits
-    cache: std::collections::HashMap<String, ZiCCacheEntry>,
+    cache: std::collections::HashMap<String, ZiCacheEntry>,
     /// Cache configuration
-    cache_config: ZiCCacheConfig,
+    cache_config: ZiCacheConfig,
     /// Current cache size in bytes
     cache_size: usize,
+    /// Whether to collect instrumentation metrics
     instrumentation: bool,
-    stage_metrics: Option<Arc<Mutex<Vec<ZiCPipelineStageMetrics>>>>,
+    /// Per-stage metrics collected during execution
+    stage_metrics: Option<Arc<Mutex<Vec<ZiPipelineStageMetrics>>>>,
 }
 
-/// Cache configuration
+/// Cache configuration for pipeline execution.
+///
+/// Controls the behavior of the result cache including size limits,
+/// time-to-live expiration, and optional compression.
 #[derive(Debug, Clone)]
-pub struct ZiCCacheConfig {
+pub struct ZiCacheConfig {
     /// Maximum cache size in bytes (0 means unlimited)
     pub max_size: usize,
     /// Default cache expiration time (None means never expires)
@@ -106,29 +164,35 @@ pub struct ZiCCacheConfig {
     pub compression: bool,
 }
 
-impl Default for ZiCCacheConfig {
+impl Default for ZiCacheConfig {
     fn default() -> Self {
         Self {
-            max_size: 100 * 1024 * 1024, // 100 MB default
-            default_ttl: Some(std::time::Duration::from_secs(600)), // 10 minutes default (600 seconds)
+            // Maximum cache size in bytes (default: 100 MB)
+            max_size: 100 * 1024 * 1024,
+            // Default TTL (default: 10 minutes)
+            default_ttl: Some(std::time::Duration::from_secs(600)),
+            // Compression disabled by default
             compression: false,
         }
     }
 }
 
-impl ZiCPipeline {
+impl ZiPipeline {
     /// Constructs a pipeline from a list of operators.
-    pub fn new(stages: Vec<Box<dyn ZiCOperator + Send + Sync>>) -> Self {
+    ///
+    /// Creates a linear pipeline where operators are executed in sequence.
+    /// Each operator receives the output of the previous operator.
+    pub fn new(stages: Vec<Box<dyn ZiOperator + Send + Sync>>) -> Self {
         // Convert linear stages to a sequence node
-        let nodes: Vec<ZiCPipelineNode> = stages
+        let nodes: Vec<ZiPipelineNode> = stages
             .into_iter()
-            .map(ZiCPipelineNode::Operator)
+            .map(ZiPipelineNode::Operator)
             .collect();
         
-        ZiCPipeline {
-            root: ZiCPipelineNode::Sequence(nodes),
+        ZiPipeline {
+            root: ZiPipelineNode::Sequence(nodes),
             cache: std::collections::HashMap::new(),
-            cache_config: ZiCCacheConfig::default(),
+            cache_config: ZiCacheConfig::default(),
             cache_size: 0,
             instrumentation: false,
             stage_metrics: None,
@@ -136,11 +200,11 @@ impl ZiCPipeline {
     }
     
     /// Constructs a pipeline from a root node.
-    pub fn from_node(root: ZiCPipelineNode) -> Self {
-        ZiCPipeline {
+    pub fn from_node(root: ZiPipelineNode) -> Self {
+        ZiPipeline {
             root,
             cache: std::collections::HashMap::new(),
-            cache_config: ZiCCacheConfig::default(),
+            cache_config: ZiCacheConfig::default(),
             cache_size: 0,
             instrumentation: false,
             stage_metrics: None,
@@ -148,13 +212,13 @@ impl ZiCPipeline {
     }
 
     /// Returns a reference to the root node.
-    pub fn root(&self) -> &ZiCPipelineNode {
+    pub fn root(&self) -> &ZiPipelineNode {
         &self.root
     }
     
     /// Sets the cache configuration for the pipeline.
     #[allow(non_snake_case)]
-    pub fn ZiFWithCacheConfig(mut self, config: ZiCCacheConfig) -> Self {
+    pub fn with_cache_config(mut self, config: ZiCacheConfig) -> Self {
         self.cache_config = config;
         self
     }
@@ -204,7 +268,7 @@ impl ZiCPipeline {
     }
     
     /// Calculates the approximate size of a record batch in bytes.
-    fn calculate_batch_size(batch: &ZiCRecordBatch) -> usize {
+    fn calculate_batch_size(batch: &ZiRecordBatch) -> usize {
         // This is an approximation - in a real implementation, we'd use a more accurate method
         batch.iter().map(|record| {
             let id_size = record.id.as_ref().map(|id| id.len()).unwrap_or(0);
@@ -217,7 +281,7 @@ impl ZiCPipeline {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFWithInstrumentation(mut self, enabled: bool) -> Self {
+    pub fn with_instrumentation(mut self, enabled: bool) -> Self {
         self.instrumentation = enabled;
         if enabled {
             self.stage_metrics = Some(Arc::new(Mutex::new(Vec::new())));
@@ -228,25 +292,25 @@ impl ZiCPipeline {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFStageMetrics(&self) -> Option<Vec<ZiCPipelineStageMetrics>> {
+    pub fn stage_metrics(&self) -> Option<Vec<ZiPipelineStageMetrics>> {
         self.stage_metrics
             .as_ref()
             .and_then(|metrics| metrics.lock().ok().map(|guard| guard.clone()))
     }
 }
 
-impl ZiCPipelineNode {
+impl ZiPipelineNode {
     /// Executes the pipeline node and returns the processed batch.
-    fn execute(&self, batch: ZiCRecordBatch, instrumentation: bool, metrics: &Option<Arc<Mutex<Vec<ZiCPipelineStageMetrics>>>>) -> Result<ZiCRecordBatch> {
+    fn execute(&self, batch: ZiRecordBatch, instrumentation: bool, metrics: &Option<Arc<Mutex<Vec<ZiPipelineStageMetrics>>>>) -> Result<ZiRecordBatch> {
         match self {
-            ZiCPipelineNode::Operator(op) => {
+            ZiPipelineNode::Operator(op) => {
                 let before = batch.len();
                 let start = Instant::now();
-                let result = ZiFExecuteOperator(op.as_ref(), batch)?;
+                let result = execute_operator(op.as_ref(), batch)?;
                 if instrumentation {
                     let duration = start.elapsed();
                     let after = result.len();
-                    let stage_metric = ZiCPipelineStageMetrics::new(
+                    let stage_metric = ZiPipelineStageMetrics::new(
                         op.name().to_string(),
                         before,
                         after,
@@ -261,7 +325,7 @@ impl ZiCPipelineNode {
                 Ok(result)
             }
             
-            ZiCPipelineNode::Sequence(nodes) => {
+            ZiPipelineNode::Sequence(nodes) => {
                 let mut result = batch;
                 for node in nodes {
                     result = node.execute(result, instrumentation, metrics)?;
@@ -269,16 +333,16 @@ impl ZiCPipelineNode {
                 Ok(result)
             }
             
-            ZiCPipelineNode::Conditional { predicate, then_branch, else_branch } => {
+            ZiPipelineNode::Conditional { predicate, then_branch, else_branch } => {
                 // Execute predicate to determine which branch to take
                 let before = batch.len();
                 let start = Instant::now();
-                let predicate_result = ZiFExecuteOperator(predicate.as_ref(), batch.clone())?;
+                let predicate_result = execute_operator(predicate.as_ref(), batch.clone())?;
                 
                 if instrumentation {
                     let duration = start.elapsed();
                     let after = predicate_result.len();
-                    let stage_metric = ZiCPipelineStageMetrics::new(
+                    let stage_metric = ZiPipelineStageMetrics::new(
                         predicate.name().to_string(),
                         before,
                         after,
@@ -299,7 +363,7 @@ impl ZiCPipelineNode {
                 }
             }
             
-            ZiCPipelineNode::Parallel { branches, num_workers: _ } => {
+            ZiPipelineNode::Parallel { branches, num_workers: _ } => {
                 if branches.is_empty() {
                     return Ok(batch);
                 }
@@ -321,7 +385,7 @@ impl ZiCPipelineNode {
                         let instrumentation = instrumentation;
                         let metrics = metrics;
                         
-                        handles.push(scope.spawn(move || -> Result<ZiCRecordBatch> {
+                        handles.push(scope.spawn(move || -> Result<ZiRecordBatch> {
                             // Execute the branch on the cloned batch
                             branch.execute(batch_clone, instrumentation, metrics)
                         }));
@@ -350,9 +414,9 @@ impl ZiCPipelineNode {
     }
 }
 
-impl ZiCPipeline {
+impl ZiPipeline {
     /// Runs the pipeline, supporting complex topologies.
-    pub fn run(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    pub fn run(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         if self.instrumentation {
             self.reset_stage_metrics();
         }
@@ -360,7 +424,7 @@ impl ZiCPipeline {
         self.root.execute(batch, self.instrumentation, &self.stage_metrics)
     }
 
-    pub fn run_chunked(&self, batch: ZiCRecordBatch, chunk_size: usize) -> Result<ZiCRecordBatch> {
+    pub fn run_chunked(&self, batch: ZiRecordBatch, chunk_size: usize) -> Result<ZiRecordBatch> {
         let mut out = Vec::new();
         let mut idx = 0;
         while idx < batch.len() {
@@ -374,16 +438,16 @@ impl ZiCPipeline {
 
     pub fn run_with_progress(
         &self,
-        batch: ZiCRecordBatch,
+        batch: ZiRecordBatch,
         progress: impl Fn(&str, usize, usize),
-    ) -> Result<ZiCRecordBatch> {
+    ) -> Result<ZiRecordBatch> {
         // For now, we'll use the existing run method and then report progress
         // based on the stage metrics if instrumentation is enabled
         let result = self.run(batch)?;
         
         // If instrumentation is enabled, we can report progress for each stage
         if self.instrumentation {
-            if let Some(metrics) = self.ZiFStageMetrics() {
+            if let Some(metrics) = self.stage_metrics() {
                 for metric in metrics {
                     progress(&metric.stage_name, metric.input_records, metric.output_records);
                 }
@@ -393,8 +457,8 @@ impl ZiCPipeline {
         Ok(result)
     }
 
-    pub fn run_cached(&mut self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
-        fn hash_batch(batch: &ZiCRecordBatch) -> String {
+    pub fn run_cached(&mut self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
+        fn hash_batch(batch: &ZiRecordBatch) -> String {
             let s = serde_json::to_string(batch).unwrap_or_default();
             blake3::hash(s.as_bytes()).to_hex().to_string()
         }
@@ -442,7 +506,7 @@ impl ZiCPipeline {
         
         // Create and store the new cache entry
         let expires_at = self.cache_config.default_ttl.map(|ttl| now + ttl);
-        let entry = ZiCCacheEntry {
+        let entry = ZiCacheEntry {
             records: out.clone(),
             expires_at,
             last_access: now,
@@ -457,31 +521,31 @@ impl ZiCPipeline {
 
     /// Executes the pipeline on multiple chunks concurrently using threads.
     #[allow(non_snake_case)]
-    pub fn ZiFRunParallel(
+    pub fn run_parallel(
         &self,
-        batch: ZiCRecordBatch,
+        batch: ZiRecordBatch,
         num_workers: usize,
-    ) -> Result<ZiCRecordBatch> {
+    ) -> Result<ZiRecordBatch> {
         self.run_parallel_impl(batch, num_workers, ExecutionMode::Threaded)
     }
     
     /// Executes the pipeline on multiple processes.
     #[allow(non_snake_case)]
-    pub fn ZiFRunMultiProcess(
+    pub fn run_multi_process(
         &self,
-        batch: ZiCRecordBatch,
+        batch: ZiRecordBatch,
         num_processes: usize,
-    ) -> Result<ZiCRecordBatch> {
+    ) -> Result<ZiRecordBatch> {
         self.run_parallel_impl(batch, num_processes, ExecutionMode::MultiProcess)
     }
     
     /// Internal implementation for parallel execution, supporting both threaded and multi-process modes.
     fn run_parallel_impl(
         &self,
-        batch: ZiCRecordBatch,
+        batch: ZiRecordBatch,
         num_workers: usize,
         mode: ExecutionMode,
-    ) -> Result<ZiCRecordBatch> {
+    ) -> Result<ZiRecordBatch> {
         if num_workers == 0 {
             return Err(ZiError::validation(
                 "parallel execution requires at least one worker",
@@ -492,7 +556,7 @@ impl ZiCPipeline {
         }
 
         let chunk_size = (batch.len().max(1) + num_workers - 1) / num_workers;
-        let mut chunks: Vec<ZiCRecordBatch> = Vec::new();
+        let mut chunks: Vec<ZiRecordBatch> = Vec::new();
         let mut current = Vec::with_capacity(chunk_size);
         for record in batch {
             current.push(record);
@@ -517,7 +581,7 @@ impl ZiCPipeline {
                     let pipeline = self;
                     let mut handles = Vec::with_capacity(chunks.len());
                     for (idx, chunk) in chunks.into_iter().enumerate() {
-                        handles.push(scope.spawn(move || -> Result<(usize, ZiCRecordBatch)> {
+                        handles.push(scope.spawn(move || -> Result<(usize, ZiRecordBatch)> {
                             let result = pipeline.run(chunk)?;
                             Ok((idx, result))
                         }));
@@ -546,107 +610,100 @@ impl ZiCPipeline {
             }
             
             ExecutionMode::MultiProcess => {
-                // Multi-process implementation using standard library
-                let mut results = Vec::with_capacity(chunks.len());
-                
-                #[cfg(unix)]
-                {
-                    // Unix-specific implementation using fork via libc
-                    let mut child_pids = Vec::new();
-                    
-                    // Fork a child process for each chunk
-                    for (idx, chunk) in chunks.into_iter().enumerate() {
-                        let pid = unsafe { libc::fork() };
-                        if pid < 0 {
-                            return Err(ZiError::internal("failed to fork process"));
-                        } else if pid == 0 {
-                            // Child process: execute pipeline and exit with result
-                            match self.run(chunk) {
-                                Ok(result) => {
-                                    // Serialize result and write to stdout
-                                    let serialized = serde_json::to_string(&result).unwrap();
-                                    println!("{}", serialized);
-                                    std::process::exit(0);
-                                }
-                                Err(err) => {
-                                    // Serialize error and write to stderr
-                                    let serialized = serde_json::to_string(&err).unwrap();
-                                    eprintln!("{}", serialized);
-                                    std::process::exit(1);
-                                }
-                            }
-                        } else {
-                            // Parent process: track child PID
-                            child_pids.push((idx, pid));
-                        }
-                    }
-                    
-                    // Parent process: collect results from children
-                    for (idx, pid) in child_pids {
-                        let mut status: i32 = 0;
-                        unsafe { libc::waitpid(pid, &mut status, 0) };
-                        if libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0 {
-                            // Read result from a temp file (simplified approach)
-                            let result: ZiCRecordBatch = Vec::new();
-                            results.push((idx, result));
-                        } else {
-                            return Err(ZiError::internal("child process failed"));
-                        }
-                    }
-                }
-                
-                #[cfg(windows)]
-                {
-                    // Windows-specific implementation using child processes
-                    use std::process::{Command, Stdio};
-                    
-                    let mut child_processes = Vec::new();
-                    
-                    // Create a child process for each chunk
-                    for (idx, chunk) in chunks.into_iter().enumerate() {
-                        // Serialize the chunk to pass to the child process
-                        let chunk_str = serde_json::to_string(&chunk)?;
-                        
-                        // Start a child process
-                        let mut child = Command::new(std::env::current_exe()?)
-                            .arg("--pipeline-worker")
-                            .arg(idx.to_string())
-                            .stdin(Stdio::piped())
-                            .stdout(Stdio::piped())
-                            .stderr(Stdio::piped())
-                            .spawn()?;
-                        
-                        // Write the chunk to the child's stdin before pushing to the vector
-                        if let Some(mut stdin) = child.stdin.take() {
-                            stdin.write_all(chunk_str.as_bytes())?;
-                        }
-                        
-                        child_processes.push((idx, child));
-                    }
-                    
-                    // Collect results from child processes
-                    for (idx, child) in child_processes {
-                        let output = child.wait_with_output()?;
-                        if output.status.success() {
-                            let result_str = String::from_utf8_lossy(&output.stdout);
-                            let result: ZiCRecordBatch = serde_json::from_str(&result_str)?;
-                            results.push((idx, result));
-                        } else {
-                            let err_str = String::from_utf8_lossy(&output.stderr);
-                            return Err(ZiError::internal(format!("child process failed: {}", err_str)));
-                        }
-                    }
-                }
-                
-                // Sort results by index and merge
-                results.sort_by_key(|(idx, _)| *idx);
-                let mut merged = Vec::new();
-                for (_, chunk) in results {
-                    merged.extend(chunk);
-                }
-                
-                Ok(merged)
+                self.run_multi_process_impl(chunks)
             }
+        }
+    }
+
+    fn run_multi_process_impl(&self, chunks: Vec<ZiRecordBatch>) -> Result<ZiRecordBatch> {
+        #[cfg(windows)]
+        {
+            log::warn!("MultiProcess mode on Windows falls back to Threaded mode for library projects");
+            let num_workers = chunks.len();
+            return self.run_parallel_impl(
+                chunks.into_iter().flatten().collect(),
+                num_workers.max(1),
+                ExecutionMode::Threaded
+            );
+        }
+
+        #[cfg(unix)]
+        {
+            use std::fs;
+
+            let temp_dir = std::env::temp_dir();
+            let session_id = blake3::hash(
+                &std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+                    .to_le_bytes()
+            ).to_hex().to_string();
+
+            let chunk_dir = temp_dir.join(format!("zi_chunks_{}", session_id));
+            fs::create_dir_all(&chunk_dir).map_err(|e| ZiError::internal(format!("failed to create temp dir: {}", e)))?;
+
+            let mut child_info = Vec::with_capacity(chunks.len());
+
+            for (idx, chunk) in chunks.into_iter().enumerate() {
+                let input_path = chunk_dir.join(format!("input_{}.json", idx));
+                let output_path = chunk_dir.join(format!("output_{}.json", idx));
+
+                let input_json = serde_json::to_string(&chunk)?;
+                fs::write(&input_path, input_json)
+                    .map_err(|e| ZiError::internal(format!("failed to write input file: {}", e)))?;
+
+                let pid = unsafe { libc::fork() };
+                if pid < 0 {
+                    let _ = fs::remove_dir_all(&chunk_dir);
+                    return Err(ZiError::internal("failed to fork process"));
+                } else if pid == 0 {
+                    let input_data: ZiRecordBatch = match fs::read_to_string(&input_path) {
+                        Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
+                        Err(_) => Vec::new(),
+                    };
+
+                    match self.run(input_data) {
+                        Ok(result) => {
+                            if let Ok(json) = serde_json::to_string(&result) {
+                                let _ = fs::write(&output_path, json);
+                            }
+                            std::process::exit(0);
+                        }
+                        Err(_) => {
+                            std::process::exit(1);
+                        }
+                    }
+                } else {
+                    child_info.push((idx, pid, output_path));
+                }
+            }
+
+            let mut results = Vec::with_capacity(child_info.len());
+            for (idx, pid, output_path) in child_info {
+                let mut status: i32 = 0;
+                unsafe { libc::waitpid(pid, &mut status, 0) };
+                
+                if libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0 {
+                    let output_json = fs::read_to_string(&output_path)
+                        .map_err(|e| ZiError::internal(format!("failed to read output file: {}", e)))?;
+                    let result: ZiRecordBatch = serde_json::from_str(&output_json)?;
+                    results.push((idx, result));
+                } else {
+                    let _ = fs::remove_dir_all(&chunk_dir);
+                    return Err(ZiError::internal("child process failed"));
+                }
+            }
+
+            let _ = fs::remove_dir_all(&chunk_dir);
+
+            results.sort_by_key(|(idx, _)| *idx);
+            let mut merged = Vec::new();
+            for (_, chunk) in results {
+                merged.extend(chunk);
+            }
+
+            Ok(merged)
         }
     }
 
@@ -657,9 +714,9 @@ impl ZiCPipeline {
     }
     
     /// Validates a pipeline node and its children recursively.
-    fn validate_node(&self, node: &ZiCPipelineNode, visited: &mut Vec<*const ZiCPipelineNode>) -> Result<()> {
+    fn validate_node(&self, node: &ZiPipelineNode, visited: &mut Vec<*const ZiPipelineNode>) -> Result<()> {
         // Check for cycles in the pipeline topology
-        let node_ptr = node as *const ZiCPipelineNode;
+        let node_ptr = node as *const ZiPipelineNode;
         if visited.contains(&node_ptr) {
             return Err(ZiError::validation("pipeline contains a cycle in its topology"));
         }
@@ -667,12 +724,12 @@ impl ZiCPipeline {
         
         // Validate based on node type
         match node {
-            ZiCPipelineNode::Operator(op) => {
+            ZiPipelineNode::Operator(op) => {
                 // Validate that the operator is properly configured
                 self.validate_operator(op.as_ref())?;
             }
             
-            ZiCPipelineNode::Sequence(nodes) => {
+            ZiPipelineNode::Sequence(nodes) => {
                 // Validate that sequence contains at least one node
                 if nodes.is_empty() {
                     return Err(ZiError::validation("sequence node must contain at least one child node"));
@@ -684,7 +741,7 @@ impl ZiCPipeline {
                 }
             }
             
-            ZiCPipelineNode::Conditional { predicate, then_branch, else_branch } => {
+            ZiPipelineNode::Conditional { predicate, then_branch, else_branch } => {
                 // Validate predicate operator
                 self.validate_operator(predicate.as_ref())?;
                 
@@ -693,7 +750,7 @@ impl ZiCPipeline {
                 self.validate_node(else_branch, visited)?;
             }
             
-            ZiCPipelineNode::Parallel { branches, num_workers } => {
+            ZiPipelineNode::Parallel { branches, num_workers } => {
                 // Validate that parallel node contains at least one branch
                 if branches.is_empty() {
                     return Err(ZiError::validation("parallel node must contain at least one branch"));
@@ -717,7 +774,7 @@ impl ZiCPipeline {
     }
     
     /// Validates that an operator is properly configured.
-    fn validate_operator(&self, op: &dyn ZiCOperator) -> Result<()> {
+    fn validate_operator(&self, op: &dyn ZiOperator) -> Result<()> {
         // In a real implementation, we'd have more detailed validation
         // For now, we'll just ensure the operator has a valid name
         let name = op.name();
@@ -736,22 +793,22 @@ impl ZiCPipeline {
     /// Executes the pipeline and returns both processed records and quality metrics.
     pub fn run_with_metrics(
         &self,
-        batch: ZiCRecordBatch,
-    ) -> Result<(ZiCRecordBatch, ZiCQualityMetrics)> {
+        batch: ZiRecordBatch,
+    ) -> Result<(ZiRecordBatch, ZiQualityMetrics)> {
         let processed = self.run(batch)?;
-        let metrics = ZiCQualityMetrics::ZiFCompute(&processed);
+        let metrics = ZiQualityMetrics::compute(&processed);
         Ok((processed, metrics))
     }
 
     /// Runs the pipeline and records a version snapshot in the provided store.
     #[allow(non_snake_case)]
-    pub fn ZiFRunWithVersion(
+    pub fn run_with_version(
         &self,
-        batch: ZiCRecordBatch,
-        store: &mut ZiCVersionStore,
+        batch: ZiRecordBatch,
+        store: &mut ZiVersionStore,
         parent: Option<&str>,
         mut metadata: Map<String, Value>,
-    ) -> Result<(ZiCRecordBatch, ZiCVersion)> {
+    ) -> Result<(ZiRecordBatch, ZiVersion)> {
         let processed = if self.instrumentation {
             let (records, stage_metrics) = self.run_with_stage_metrics(batch)?;
             let stage_values: Vec<Value> = stage_metrics.iter().map(|m| m.to_value()).collect();
@@ -759,7 +816,7 @@ impl ZiCPipeline {
                 .iter()
                 .map(|m| m.duration.as_secs_f64() * 1000.0)
                 .collect();
-            let summary = ZiCStatisticSummary::from_slice(&durations);
+            let summary = ZiStatisticSummary::from_slice(&durations);
             metadata.insert("stage_metrics".into(), Value::Array(stage_values));
             metadata.insert(
                 "stage_timing_ms".into(),
@@ -769,8 +826,8 @@ impl ZiCPipeline {
         } else {
             self.run(batch)?
         };
-        let metrics = ZiCQualityMetrics::ZiFCompute(&processed);
-        let data_hash = ZiFComputeDataHash(&processed);
+        let metrics = ZiQualityMetrics::compute(&processed);
+        let data_hash = compute_data_hash(&processed);
 
         if !metadata.contains_key("stages") {
             // For now, we'll use a placeholder for stage names
@@ -782,20 +839,20 @@ impl ZiCPipeline {
             .entry("record_count".to_string())
             .or_insert_with(|| Value::from(processed.len() as u64));
 
-        let triple_hash = ZiCTripleHash {
+        let triple_hash = ZiTripleHash {
             data: data_hash,
-            code: ZiCCodeHash([0u8; 32]),
-            env: ZiCEnvHash([0u8; 32]),
+            code: ZiCodeHash([0u8; 32]),
+            env: ZiEnvHash([0u8; 32]),
         };
 
-        let version = store.ZiFCreate(parent, metadata, metrics, triple_hash)?;
+        let version = store.create(parent, metadata, metrics, triple_hash)?;
         Ok((processed, version))
     }
 
     fn run_with_stage_metrics(
         &self,
-        batch: ZiCRecordBatch,
-    ) -> Result<(ZiCRecordBatch, Vec<ZiCPipelineStageMetrics>)> {
+        batch: ZiRecordBatch,
+    ) -> Result<(ZiRecordBatch, Vec<ZiPipelineStageMetrics>)> {
         // Create a new metrics vector to store stage metrics
         let stage_metrics = Arc::new(Mutex::new(Vec::new()));
         
@@ -825,14 +882,14 @@ impl ZiCPipeline {
 }
 
 #[derive(Debug, Clone)]
-pub struct ZiCPipelineStageMetrics {
+pub struct ZiPipelineStageMetrics {
     pub stage_name: String,
     pub input_records: usize,
     pub output_records: usize,
     pub duration: Duration,
 }
 
-impl ZiCPipelineStageMetrics {
+impl ZiPipelineStageMetrics {
     pub fn new(
         stage_name: String,
         input_records: usize,
@@ -869,27 +926,27 @@ impl ZiCPipelineStageMetrics {
     }
 }
 
-pub struct ZiCOrbitPipelineStep {
+pub struct ZiOrbitPipelineStep {
     operator_name: String,
     config: Value,
 }
 
-pub struct ZiCOrbitPipeline {
+pub struct ZiOrbitPipeline {
     plugin_id: String,
-    steps: Vec<ZiCOrbitPipelineStep>,
+    steps: Vec<ZiOrbitPipelineStep>,
 }
 
-impl ZiCOrbitPipeline {
+impl ZiOrbitPipeline {
     pub fn run(
         &self,
-        orbit: &mut ZiCInProcessOrbit,
-        metrics: &mut ZiCQualityMetrics,
-        version_store: Option<&mut ZiCVersionStore>,
-        mut batch: ZiCRecordBatch,
-    ) -> Result<ZiCRecordBatch> {
-        let mut ctx = orbit.ZiFMakeExecutionContext(&self.plugin_id, metrics, version_store)?;
+        orbit: &mut ZiInProcessOrbit,
+        metrics: &mut ZiQualityMetrics,
+        version_store: Option<&mut ZiVersionStore>,
+        mut batch: ZiRecordBatch,
+    ) -> Result<ZiRecordBatch> {
+        let mut ctx = orbit.make_execution_context(&self.plugin_id, metrics, version_store)?;
         for step in &self.steps {
-            batch = orbit.ZiFCallOperator(
+            batch = orbit.call_operator(
                 &self.plugin_id,
                 &step.operator_name,
                 batch,
@@ -902,15 +959,15 @@ impl ZiCOrbitPipeline {
 }
 
 /// Builder that knows how to instantiate operators from configuration.
-pub struct ZiCPipelineBuilder {
+pub struct ZiPipelineBuilder {
     factories: HashMap<String, OperatorFactory>,
     plugins: Vec<Library>,
 }
 
-impl ZiCPipelineBuilder {
+impl ZiPipelineBuilder {
     /// Creates an empty builder.
     pub fn new() -> Self {
-        ZiCPipelineBuilder {
+        ZiPipelineBuilder {
             factories: HashMap::new(),
             plugins: Vec::new(),
         }
@@ -927,9 +984,9 @@ impl ZiCPipelineBuilder {
     /// runtime. This allows the in-process VM and the direct pipeline builder
     /// to share a single source of truth for available operators.
     #[allow(non_snake_case)]
-    pub fn ZiFRegisterOperatorsIntoOrbit(&self, orbit: &mut ZiCInProcessOrbit) {
+    pub fn register_operators_into_orbit(&self, orbit: &mut ZiInProcessOrbit) {
         for (name, factory) in &self.factories {
-            orbit.ZiFRegisterOperator(name, *factory);
+            orbit.register_operator(name, *factory);
         }
     }
 
@@ -941,220 +998,396 @@ impl ZiCPipelineBuilder {
     fn register_defaults(&mut self) {
         self.register(
             "filter.equals",
-            crate::operators::filter::ZiFFilterEqualsFactory as OperatorFactory,
+            crate::operators::filter::filter_equals_factory as OperatorFactory,
         );
         self.register(
             "filter.not_equals",
-            crate::operators::filter::ZiFFilterNotEqualsFactory as OperatorFactory,
+            crate::operators::filter::filter_not_equals_factory as OperatorFactory,
         );
         self.register(
             "filter.any",
-            crate::operators::filter::ZiFFilterAnyFactory as OperatorFactory,
+            crate::operators::filter::filter_any_factory as OperatorFactory,
         );
         self.register(
             "filter.in",
-            crate::operators::filter::ZiFFilterInFactory as OperatorFactory,
+            crate::operators::filter::filter_in_factory as OperatorFactory,
         );
         self.register(
             "filter.not_in",
-            crate::operators::filter::ZiFFilterNotInFactory as OperatorFactory,
+            crate::operators::filter::filter_not_in_factory as OperatorFactory,
         );
         self.register(
             "filter.exists",
-            crate::operators::filter::ZiFFilterExistsFactory as OperatorFactory,
+            crate::operators::filter::filter_exists_factory as OperatorFactory,
         );
         self.register(
             "filter.not_exists",
-            crate::operators::filter::ZiFFilterNotExistsFactory as OperatorFactory,
+            crate::operators::filter::filter_not_exists_factory as OperatorFactory,
         );
         self.register(
             "filter.contains",
-            crate::operators::filter::ZiFFilterContainsFactory as OperatorFactory,
+            crate::operators::filter::filter_contains_factory as OperatorFactory,
         );
         self.register(
             "filter.contains_all",
-            crate::operators::filter::ZiFFilterContainsAllFactory as OperatorFactory,
+            crate::operators::filter::filter_contains_all_factory as OperatorFactory,
         );
         self.register(
             "filter.contains_any",
-            crate::operators::filter::ZiFFilterContainsAnyFactory as OperatorFactory,
+            crate::operators::filter::filter_contains_any_factory as OperatorFactory,
         );
         self.register(
             "filter.contains_none",
-            crate::operators::filter::ZiFFilterContainsNoneFactory as OperatorFactory,
+            crate::operators::filter::filter_contains_none_factory as OperatorFactory,
         );
         self.register(
             "filter.length_range",
-            crate::operators::filter::ZiFFilterLengthRangeFactory as OperatorFactory,
+            crate::operators::filter::filter_length_range_factory as OperatorFactory,
         );
         self.register(
             "filter.token_range",
-            crate::operators::filter::ZiFFilterTokenRangeFactory as OperatorFactory,
+            crate::operators::filter::filter_token_range_factory as OperatorFactory,
         );
         self.register(
             "filter.array_contains",
-            crate::operators::filter::ZiFFilterArrayContainsFactory as OperatorFactory,
+            crate::operators::filter::filter_array_contains_factory as OperatorFactory,
         );
         self.register(
             "filter.starts_with",
-            crate::operators::filter::ZiFFilterStartsWithFactory as OperatorFactory,
+            crate::operators::filter::filter_starts_with_factory as OperatorFactory,
         );
         self.register(
             "filter.ends_with",
-            crate::operators::filter::ZiFFilterEndsWithFactory as OperatorFactory,
+            crate::operators::filter::filter_ends_with_factory as OperatorFactory,
         );
         self.register(
             "filter.regex",
-            crate::operators::filter::ZiFFilterRegexFactory as OperatorFactory,
+            crate::operators::filter::filter_regex_factory as OperatorFactory,
         );
         self.register(
             "filter.is_null",
-            crate::operators::filter::ZiFFilterIsNullFactory as OperatorFactory,
+            crate::operators::filter::filter_is_null_factory as OperatorFactory,
         );
         self.register(
             "filter.greater_than",
-            crate::operators::filter::ZiFFilterGreaterThanFactory as OperatorFactory,
+            crate::operators::filter::filter_greater_than_factory as OperatorFactory,
         );
         self.register(
             "filter.less_than",
-            crate::operators::filter::ZiFFilterLessThanFactory as OperatorFactory,
+            crate::operators::filter::filter_less_than_factory as OperatorFactory,
         );
         self.register(
             "filter.between",
-            crate::operators::filter::ZiFFilterBetweenFactory as OperatorFactory,
+            crate::operators::filter::filter_between_factory as OperatorFactory,
         );
         self.register(
             "filter.range",
-            crate::operators::filter::ZiFFilterRangeFactory as OperatorFactory,
+            crate::operators::filter::filter_range_factory as OperatorFactory,
         );
         self.register(
             "metadata.enrich",
-            crate::operators::metadata::ZiFMetadataEnrichFactory as OperatorFactory,
+            crate::operators::metadata::metadata_enrich_factory as OperatorFactory,
         );
         self.register(
             "metadata.rename",
-            crate::operators::metadata::ZiFMetadataRenameFactory as OperatorFactory,
+            crate::operators::metadata::metadata_rename_factory as OperatorFactory,
         );
         self.register(
             "metadata.remove",
-            crate::operators::metadata::ZiFMetadataRemoveFactory as OperatorFactory,
+            crate::operators::metadata::metadata_remove_factory as OperatorFactory,
         );
         self.register(
             "metadata.copy",
-            crate::operators::metadata::ZiFMetadataCopyFactory as OperatorFactory,
+            crate::operators::metadata::metadata_copy_factory as OperatorFactory,
         );
         self.register(
             "metadata.require",
-            crate::operators::metadata::ZiFMetadataRequireFactory as OperatorFactory,
+            crate::operators::metadata::metadata_require_factory as OperatorFactory,
         );
         self.register(
             "metadata.extract",
-            crate::operators::metadata::ZiFMetadataExtractFactory as OperatorFactory,
+            crate::operators::metadata::metadata_extract_factory as OperatorFactory,
         );
         self.register(
             "metadata.keep",
-            crate::operators::metadata::ZiFMetadataKeepFactory as OperatorFactory,
+            crate::operators::metadata::metadata_keep_factory as OperatorFactory,
         );
         self.register(
             "limit",
-            crate::operators::limit::ZiFLimitFactory as OperatorFactory,
+            crate::operators::limit::limit_factory as OperatorFactory,
         );
 
         // language
         self.register(
             "lang.detect",
-            crate::operators::lang::ZiFLangDetectFactory as OperatorFactory,
+            crate::operators::lang::lang_detect_factory as OperatorFactory,
         );
         self.register(
             "lang.confidence",
-            crate::operators::lang::ZiFLangConfidenceFactory as OperatorFactory,
+            crate::operators::lang::lang_confidence_factory as OperatorFactory,
         );
 
         // pii
         self.register(
             "pii.redact",
-            crate::operators::pii::ZiFPiiRedactFactory as OperatorFactory,
+            crate::operators::pii::pii_redact_factory as OperatorFactory,
         );
 
         // dedup
         self.register(
             "dedup.simhash",
-            crate::operators::dedup::ZiFDedupSimhashFactory as OperatorFactory,
+            crate::operators::dedup::dedup_simhash_factory as OperatorFactory,
         );
         self.register(
             "dedup.minhash",
-            crate::operators::dedup::ZiFDedupMinhashFactory as OperatorFactory,
+            crate::operators::dedup::dedup_minhash_factory as OperatorFactory,
         );
         self.register(
             "dedup.semantic",
-            crate::operators::dedup::ZiFDedupSemanticFactory as OperatorFactory,
+            crate::operators::dedup::dedup_semantic_factory as OperatorFactory,
         );
 
         // quality
         self.register(
             "quality.score",
-            crate::operators::quality::ZiFQualityScoreFactory as OperatorFactory,
+            crate::operators::quality::quality_score_factory as OperatorFactory,
         );
         self.register(
             "quality.filter",
-            crate::operators::quality::ZiFQualityFilterFactory as OperatorFactory,
+            crate::operators::quality::quality_filter_factory as OperatorFactory,
         );
         self.register(
             "quality.toxicity",
-            crate::operators::quality::ZiFToxicityFactory as OperatorFactory,
+            crate::operators::quality::toxicity_factory as OperatorFactory,
         );
 
         // transform
         self.register(
             "transform.normalize",
-            crate::operators::transform::ZiFTransformNormalizeFactory as OperatorFactory,
+            crate::operators::transform::transform_normalize_factory as OperatorFactory,
+        );
+        self.register(
+            "transform.map",
+            crate::operators::transform::transform_map_factory as OperatorFactory,
+        );
+        self.register(
+            "transform.template",
+            crate::operators::transform::transform_template_factory as OperatorFactory,
+        );
+        self.register(
+            "transform.chain",
+            crate::operators::transform::transform_chain_factory as OperatorFactory,
+        );
+        self.register(
+            "transform.flat_map",
+            crate::operators::transform::transform_flat_map_factory as OperatorFactory,
+        );
+        self.register(
+            "transform.coalesce",
+            crate::operators::transform::transform_coalesce_factory as OperatorFactory,
+        );
+        self.register(
+            "transform.conditional",
+            crate::operators::transform::transform_conditional_factory as OperatorFactory,
         );
 
         // augment
         self.register(
             "augment.synonym",
-            crate::operators::augment::ZiFAugmentSynonymFactory as OperatorFactory,
+            crate::operators::augment::augment_synonym_factory as OperatorFactory,
         );
         self.register(
             "augment.noise",
-            crate::operators::augment::ZiFAugmentNoiseFactory as OperatorFactory,
+            crate::operators::augment::augment_noise_factory as OperatorFactory,
         );
 
         // sampling
         self.register(
             "sample.random",
-            crate::operators::sample::ZiFSampleRandomFactory as OperatorFactory,
+            crate::operators::sample::sample_random_factory as OperatorFactory,
         );
         self.register(
             "sample.top",
-            crate::operators::sample::ZiFSampleTopFactory as OperatorFactory,
+            crate::operators::sample::sample_top_factory as OperatorFactory,
+        );
+        self.register(
+            "sample.balanced",
+            crate::operators::sample::sample_balanced_factory as OperatorFactory,
+        );
+        self.register(
+            "sample.by_distribution",
+            crate::operators::sample::sample_by_distribution_factory as OperatorFactory,
+        );
+        self.register(
+            "sample.by_length",
+            crate::operators::sample::sample_by_length_factory as OperatorFactory,
+        );
+        self.register(
+            "sample.stratified",
+            crate::operators::sample::sample_stratified_factory as OperatorFactory,
         );
 
         // llm operators
         self.register(
             "llm.token_count",
-            crate::operators::llm::ZiFTokenCountFactory as OperatorFactory,
+            crate::operators::llm::token_count_factory as OperatorFactory,
         );
         self.register(
             "llm.conversation_format",
-            crate::operators::llm::ZiFConversationFormatFactory as OperatorFactory,
+            crate::operators::llm::conversation_format_factory as OperatorFactory,
         );
         self.register(
             "llm.context_length",
-            crate::operators::llm::ZiFContextLengthFactory as OperatorFactory,
+            crate::operators::llm::context_length_factory as OperatorFactory,
         );
         self.register(
             "llm.qa_extract",
-            crate::operators::llm::ZiFQAExtractFactory as OperatorFactory,
+            crate::operators::llm::q_a_extract_factory as OperatorFactory,
         );
         self.register(
             "llm.instruction_format",
-            crate::operators::llm::ZiFInstructionFormatFactory as OperatorFactory,
+            crate::operators::llm::instruction_format_factory as OperatorFactory,
+        );
+
+        // merge operators
+        self.register(
+            "merge.concat",
+            crate::operators::merge::merge_concat_factory as OperatorFactory,
+        );
+        self.register(
+            "merge.batch",
+            crate::operators::merge::merge_batch_factory as OperatorFactory,
+        );
+        self.register(
+            "merge.union",
+            crate::operators::merge::merge_union_factory as OperatorFactory,
+        );
+        self.register(
+            "merge.intersect",
+            crate::operators::merge::merge_intersect_factory as OperatorFactory,
+        );
+        self.register(
+            "merge.difference",
+            crate::operators::merge::merge_difference_factory as OperatorFactory,
+        );
+        self.register(
+            "merge.zip",
+            crate::operators::merge::merge_zip_factory as OperatorFactory,
+        );
+
+        // split operators
+        self.register(
+            "split.random",
+            crate::operators::split::split_random_factory as OperatorFactory,
+        );
+        self.register(
+            "split.stratified",
+            crate::operators::split::split_stratified_factory as OperatorFactory,
+        );
+        self.register(
+            "split.sequential",
+            crate::operators::split::split_sequential_factory as OperatorFactory,
+        );
+        self.register(
+            "split.kfold",
+            crate::operators::split::split_k_fold_factory as OperatorFactory,
+        );
+        self.register(
+            "split.chunk",
+            crate::operators::split::split_chunk_factory as OperatorFactory,
+        );
+
+        // token operators
+        self.register(
+            "token.count",
+            crate::operators::token::token_count_factory as OperatorFactory,
+        );
+        self.register(
+            "token.stats",
+            crate::operators::token::token_stats_factory as OperatorFactory,
+        );
+        self.register(
+            "token.filter",
+            crate::operators::token::token_filter_factory as OperatorFactory,
+        );
+        self.register(
+            "token.histogram",
+            crate::operators::token::token_histogram_factory as OperatorFactory,
+        );
+
+        // field operators
+        self.register(
+            "field.select",
+            crate::operators::field::field_select_factory as OperatorFactory,
+        );
+        self.register(
+            "field.rename",
+            crate::operators::field::field_rename_factory as OperatorFactory,
+        );
+        self.register(
+            "field.drop",
+            crate::operators::field::field_drop_factory as OperatorFactory,
+        );
+        self.register(
+            "field.copy",
+            crate::operators::field::field_copy_factory as OperatorFactory,
+        );
+        self.register(
+            "field.move",
+            crate::operators::field::field_move_factory as OperatorFactory,
+        );
+        self.register(
+            "field.flatten",
+            crate::operators::field::field_flatten_factory as OperatorFactory,
+        );
+        self.register(
+            "field.default",
+            crate::operators::field::field_default_factory as OperatorFactory,
+        );
+        self.register(
+            "field.require",
+            crate::operators::field::field_require_factory as OperatorFactory,
+        );
+
+        // shuffle operators
+        self.register(
+            "shuffle",
+            crate::operators::shuffle::shuffle_factory as OperatorFactory,
+        );
+        self.register(
+            "shuffle.deterministic",
+            crate::operators::shuffle::shuffle_deterministic_factory as OperatorFactory,
+        );
+        self.register(
+            "shuffle.block",
+            crate::operators::shuffle::shuffle_block_factory as OperatorFactory,
+        );
+        self.register(
+            "shuffle.stratified",
+            crate::operators::shuffle::shuffle_stratified_factory as OperatorFactory,
+        );
+        self.register(
+            "shuffle.window",
+            crate::operators::shuffle::shuffle_window_factory as OperatorFactory,
+        );
+
+        // distribution operators
+        self.register(
+            "distribution.analyze",
+            crate::inspect::distribution::distribution_analyzer_factory as OperatorFactory,
+        );
+        self.register(
+            "distribution.report",
+            crate::inspect::distribution::distribution_report_factory as OperatorFactory,
+        );
+        self.register(
+            "distribution.correlation",
+            crate::inspect::distribution::correlation_factory as OperatorFactory,
         );
     }
 
     /// Builds a pipeline from a sequence of configuration steps.
-    pub fn build_from_config(&self, steps: &[Value]) -> Result<ZiCPipeline> {
+    pub fn build_from_config(&self, steps: &[Value]) -> Result<ZiPipeline> {
         let mut stages = Vec::with_capacity(steps.len());
         for (index, step) in steps.iter().enumerate() {
             let object = step.as_object().ok_or_else(|| {
@@ -1180,17 +1413,17 @@ impl ZiCPipelineBuilder {
             stages.push(operator);
         }
 
-        let pipeline = ZiCPipeline::new(stages);
+        let pipeline = ZiPipeline::new(stages);
         pipeline.validate()?;
         Ok(pipeline)
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFBuildOrbitPipeline(
+    pub fn build_orbit_pipeline(
         &self,
         plugin_id: impl Into<String>,
         steps: &[Value],
-    ) -> Result<ZiCOrbitPipeline> {
+    ) -> Result<ZiOrbitPipeline> {
         let mut orbit_steps = Vec::with_capacity(steps.len());
         for (index, step) in steps.iter().enumerate() {
             let object = step.as_object().ok_or_else(|| {
@@ -1214,7 +1447,7 @@ impl ZiCPipelineBuilder {
             }
 
             let config_value = object.get("config").cloned().unwrap_or(Value::Null);
-            orbit_steps.push(ZiCOrbitPipelineStep {
+            orbit_steps.push(ZiOrbitPipelineStep {
                 operator_name: operator_name.to_string(),
                 config: config_value,
             });
@@ -1224,7 +1457,7 @@ impl ZiCPipelineBuilder {
             return Err(ZiError::pipeline("orbit_pipeline", "no stages configured"));
         }
 
-        Ok(ZiCOrbitPipeline {
+        Ok(ZiOrbitPipeline {
             plugin_id: plugin_id.into(),
             steps: orbit_steps,
         })
@@ -1244,7 +1477,7 @@ impl ZiCPipelineBuilder {
                 })?;
 
             let mut ctx = PluginContext {
-                builder: self as *mut ZiCPipelineBuilder,
+                builder: self as *mut ZiPipelineBuilder,
                 error: None,
             };
 
@@ -1276,7 +1509,7 @@ type PluginRegisterFn = unsafe extern "C" fn(RegisterOperatorFn, *mut c_void) ->
 type RegisterOperatorFn = unsafe extern "C" fn(*const c_char, OperatorFactory, *mut c_void);
 
 struct PluginContext {
-    builder: *mut ZiCPipelineBuilder,
+    builder: *mut ZiPipelineBuilder,
     error: Option<ZiError>,
 }
 

@@ -15,26 +15,38 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # ZiOrbit Plugin System Module
+//!
+//! This module provides the plugin runtime system for Zi, enabling dynamic loading
+//! and execution of operator plugins at runtime.
+//!
+//! ## Submodules
+//!
+//! - `runtime`: Core runtime for plugin execution
+//! - `plugin`: Plugin interface and descriptors
+//! - `operator_registry`: Registry for operator factories
+//! - `plugin_package`: Plugin package loading and validation
+
 pub mod runtime;
 pub(crate) mod operator_registry;
 pub(crate) mod plugin_package;
 pub mod plugin;
 
 pub use runtime::{
-    ZiCDataVisibility,
-    ZiCExecutionContext,
-    ZiCInProcessOrbit,
-    ZiCOrbit,
-    ZiCPluginDescriptor,
-    ZiCPluginExport,
-    ZiCPluginExportKind,
-    ZiCPluginPolicy,
-    ZiFScriptOperatorFn,
+    ZiDataVisibility,
+    ZiExecutionContext,
+    ZiInProcessOrbit,
+    ZiOrbit,
+    ZiPluginDescriptor,
+    ZiPluginExport,
+    ZiPluginExportKind,
+    ZiPluginPolicy,
+    ScriptOperatorFn,
 };
 
-pub use operator_registry::{ZiCOperatorRegistry, ZiFOperatorFactory};
-pub use plugin_package::ZiFLoadPluginDescriptorFromPath;
+pub use operator_registry::{ZiOperatorRegistry, OperatorFactory};
+pub use plugin_package::load_plugin_descriptor_from_path;
 pub use plugin::{
-    ZiCPlugin, ZiCPluginInstance, ZiCPluginManifest, ZiCPluginRegistry,
-    ZiCPluginLifecycleManager, ZiCPluginApi, ZI_PLUGIN_ABI_VERSION,
+    ZiPlugin, ZiPluginInstance, ZiPluginManifest, ZiPluginRegistry,
+    ZiPluginLifecycleManager, ZiPluginApi, ZI_PLUGIN_ABI_VERSION,
 };

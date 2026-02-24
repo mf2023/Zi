@@ -69,6 +69,8 @@ Zi 采用针对 LLM 数据处理工作流优化的模块化架构：
 - 元数据丰富和操作
 - 支持自定义模式的 PII 编辑
 - 文本规范化和标准化
+- 字段操作（选择、重命名、删除、复制、移动、展平）
+- 模板化值渲染
 
 #### 📝 去重
 - 基于 SimHash 的近重复检测
@@ -93,11 +95,18 @@ Zi 采用针对 LLM 数据处理工作流优化的模块化架构：
 - 数据 Profile（字段统计、频率分布、异常检测）
 - 数据集 Diff（记录级、字段级对比）
 - 文本统计（词频、N-gram）
+- 分布分析（直方图、百分位数、相关性）
 
 #### ✨ 数据增强
 - 模板化数据合成
 - 规则驱动数据生成（随机数、UUID、Faker）
 - LLM 辅助合成接口
+
+#### 📦 数据集操作
+- 数据集合并（拼接、并集、交集、差集、压缩）
+- 数据集划分（随机、分层、顺序、K折、分块）
+- 平衡采样（欠采样、过采样、混合）
+- 数据打乱（Fisher-Yates、分块、分层、窗口）
 
 <h2 align="center">⚡ 快速开始</h2>
 
@@ -105,12 +114,11 @@ Zi 采用针对 LLM 数据处理工作流优化的模块化架构：
 
 ```rust
 use serde_json::json;
-use Zi::pipeline::ZiCPipelineBuilder;
-use Zi::record::ZiCRecord;
+use zix::{ZiPipelineBuilder, ZiRecord};
 
 let records = vec![
-    ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "Hello world"})),
-    ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "你好世界"})),
+    ZiRecord::new(Some("1".into()), json!({"text": "Hello world"})),
+    ZiRecord::new(Some("2".into()), json!({"text": "你好世界"})),
 ];
 
 let steps = [
@@ -120,7 +128,7 @@ let steps = [
     json!({"operator": "quality.filter", "config": {"min": 0.5}}),
 ];
 
-let pipeline = ZiCPipelineBuilder::with_defaults()
+let pipeline = ZiPipelineBuilder::with_defaults()
     .build_from_config(&steps)
     .expect("合法的管道配置");
 
@@ -130,30 +138,28 @@ let result = pipeline.run(records).expect("管道执行成功");
 ### 数据摄入与导出
 
 ```rust
-use Zi::ingest::{ZiCStreamReader, ZiCReaderConfig};
-use Zi::export::{ZiCStreamWriter, ZiCWriterConfig, ZiCOutputFormat};
+use zix::ingest::{ZiStreamReader, ZiReaderConfig};
+use zix::export::{ZiStreamWriter, ZiWriterConfig, ZiOutputFormat};
 use std::path::Path;
 
 // 读取数据
-let reader = ZiCStreamReader::ZiFNew()
-    .ZiFWithConfig(ZiCReaderConfig {
-        batch_size: 10000,
-        skip_errors: true,
-        ..Default::default()
-    });
-
-let batch = reader.ZiFReadPath(Path::new("data.jsonl"))?;
-
-// 导出数据
-let mut writer = ZiCStreamWriter::ZiFNew();
-let config = ZiCWriterConfig {
-    format: ZiCOutputFormat::Jsonl,
-    compression: ZiCCompression::Gzip,
-    split_by_count: Some(100000),
+let config = ZiReaderConfig {
+    path: "data.jsonl".to_string(),
+    batch_size: 10000,
     ..Default::default()
 };
+let reader = ZiStreamReader::new(config)?;
+let batch = reader.read_all()?;
 
-let stats = writer.ZiFWrite(&batch, Path::new("output.jsonl.gz"))?;
+// 导出数据
+let config = ZiWriterConfig {
+    path: "output.jsonl".to_string(),
+    format: ZiOutputFormat::Jsonl,
+    batch_size: 1000,
+    ..Default::default()
+};
+let writer = ZiStreamWriter::new(config);
+let stats = writer.write(&batch)?;
 ```
 
 ### DSL 配置
@@ -186,15 +192,15 @@ steps:
 ```
 
 ```rust
-use Zi::dsl::{ZiCDSLParser, ZiCDSLCompiler};
+use zix::dsl::{ZiDSLParser, ZiDSLCompiler};
 
-let parser = ZiCDSLParser::ZiFNew();
-let result = parser.ZiFParseFile(Path::new("pipeline.yaml"))?;
+let parser = ZiDSLParser::new();
+let result = parser.parse_file(Path::new("pipeline.yaml"))?;
 
-let compiler = ZiCDSLCompiler::ZiFNew();
-let pipeline = compiler.ZiFCompile(&result.program)?;
+let compiler = ZiDSLCompiler::new();
+let pipeline = compiler.compile(&result.program)?;
 
-let output = pipeline.ZiFRun(batch)?;
+let output = pipeline.run(batch)?;
 ```
 
 <h2 align="center">🔧 配置</h2>
@@ -278,7 +284,7 @@ cargo bench
 通过共享库动态加载算子：
 
 ```rust
-let mut builder = ZiCPipelineBuilder::with_defaults();
+let mut builder = ZiPipelineBuilder::with_defaults();
 builder.load_plugin("path/to/plugin.so")?;
 ```
 
@@ -332,31 +338,106 @@ Zi 使用三哈希版本控制实现可重复处理：
 | `llm.qa_extract` | QA 对提取 |
 | `llm.instruction_format` | 指令格式化 |
 
+### 合并算子 (merge.*)
+| 算子 | 描述 |
+|:-----|:-----|
+| `merge.concat` | 数据集拼接 |
+| `merge.batch` | 批量合并记录 |
+| `merge.union` | 并集合并（去重） |
+| `merge.intersect` | 交集合并 |
+| `merge.difference` | 差集合并 |
+| `merge.zip` | 压缩合并字段 |
+
+### 划分算子 (split.*)
+| 算子 | 描述 |
+|:-----|:-----|
+| `split.random` | 随机划分（训练/验证/测试） |
+| `split.stratified` | 分层划分 |
+| `split.sequential` | 顺序划分 |
+| `split.kfold` | K折划分 |
+| `split.chunk` | 分块划分 |
+
+### Token 算子 (token.*)
+| 算子 | 描述 |
+|:-----|:-----|
+| `token.count` | Token 计数 |
+| `token.stats` | Token 统计 |
+| `token.filter` | 按 Token 数过滤 |
+| `token.histogram` | Token 分布直方图 |
+
+### 字段算子 (field.*)
+| 算子 | 描述 |
+|:-----|:-----|
+| `field.select` | 选择字段 |
+| `field.rename` | 重命名字段 |
+| `field.drop` | 删除字段 |
+| `field.copy` | 复制字段 |
+| `field.move` | 移动字段 |
+| `field.flatten` | 展平嵌套字段 |
+| `field.default` | 设置默认值 |
+| `field.require` | 必需字段检查 |
+
+### 转换算子 (transform.*)
+| 算子 | 描述 |
+|:-----|:-----|
+| `transform.normalize` | 文本标准化 |
+| `transform.map` | 字段值映射 |
+| `transform.template` | 模板渲染 |
+| `transform.chain` | 链式转换 |
+| `transform.flat_map` | 扁平化映射 |
+| `transform.coalesce` | 合并取值 |
+| `transform.conditional` | 条件转换 |
+
+### 采样算子 (sample.*)
+| 算子 | 描述 |
+|:-----|:-----|
+| `sample.random` | 随机采样 |
+| `sample.top` | Top-K 采样 |
+| `sample.balanced` | 平衡采样 |
+| `sample.by_distribution` | 按分布采样 |
+| `sample.by_length` | 按长度采样 |
+| `sample.stratified` | 分层采样 |
+
+### 打乱算子 (shuffle.*)
+| 算子 | 描述 |
+|:-----|:-----|
+| `shuffle` | 随机打乱 |
+| `shuffle.deterministic` | 确定性打乱 |
+| `shuffle.block` | 分块打乱 |
+| `shuffle.stratified` | 分层打乱 |
+| `shuffle.window` | 窗口打乱 |
+
+### 分布算子 (distribution.*)
+| 算子 | 描述 |
+|:-----|:-----|
+| `distribution.analyze` | 字段分布分析 |
+| `distribution.report` | 分布报告 |
+| `distribution.correlation` | 相关性分析 |
+
 ### 其他算子
 | 算子 | 描述 |
 |:-----|:-----|
 | `lang.detect` | 语言检测 |
 | `metadata.enrich` | 元数据丰富 |
 | `limit` | 记录数量限制 |
-| `sample.random` | 随机采样 |
 | `pii.redact` | PII 脱敏 |
 
 <h2 align="center">❓ 常见问题</h2>
 
 **Q: 如何添加新算子？**
-A: 实现 `ZiCOperator` trait 并通过算子注册表注册。
+A: 实现 `ZiOperator` trait 并通过算子注册表注册。
 
 **Q: 如何启用并行执行？**
 A: 启用 `parallel` 特性标志并配置 DAG 调度器进行并行执行。
 
 **Q: 如何处理大文件？**
-A: 使用 `ZiCRecordIterator` 进行流式批处理。
+A: 使用 `ZiRecordIterator` 进行流式批处理。
 
 **Q: 如何使用 DSL 配置？**
-A: 使用 `ZiCDSLParser` 解析 YAML/JSON 配置文件。
+A: 使用 `ZiDSLParser` 解析 YAML/JSON 配置文件。
 
 **Q: 如何追踪数据血缘？**
-A: 使用 `ZiCManifest` 和 `ZiCLineage` 记录处理过程。
+A: 使用 `ZiManifest` 和 `ZiLineage` 记录处理过程。
 
 <h2 align="center">🌏 社区</h2>
 

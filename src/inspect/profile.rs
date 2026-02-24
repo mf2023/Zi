@@ -4,7 +4,7 @@
 //! The Zi project belongs to the Dunimd project team.
 //!
 //! Licensed under the Apache License, Version 2.0 (the "License");
-//! you may not use this file except in compliance with the License.
+//! You may not use this file except in compliance with the License.
 //! You may obtain a copy of the License at
 //!
 //!     http://www.apache.org/licenses/LICENSE-2.0
@@ -20,10 +20,10 @@ use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::record::{ZiCRecord, ZiCRecordBatch};
+use crate::record::{ZiRecord, ZiRecordBatch};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct ZiCFieldProfile {
+pub struct ZiFieldProfile {
     pub name: String,
     pub count: usize,
     pub null_count: usize,
@@ -35,41 +35,41 @@ pub struct ZiCFieldProfile {
     pub max_value: Option<Value>,
     pub avg_value: Option<f64>,
     pub std_dev: Option<f64>,
-    pub anomalies: Vec<ZiCAnomaly>,
+    pub anomalies: Vec<ZiAnomaly>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ZiCAnomaly {
+pub struct ZiAnomaly {
     pub anomaly_type: String,
     pub description: String,
-    pub severity: ZiCAnomalySeverity,
+    pub severity: ZiAnomalySeverity,
     pub affected_count: usize,
     pub sample_indices: Vec<usize>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ZiCAnomalySeverity {
+pub enum ZiAnomalySeverity {
     Low,
     Medium,
     High,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct ZiCProfileReport {
+pub struct ZiProfileReport {
     pub total_records: usize,
     pub total_fields: usize,
-    pub field_profiles: Vec<ZiCFieldProfile>,
+    pub field_profiles: Vec<ZiFieldProfile>,
     pub avg_record_size: f64,
     pub memory_estimate: usize,
     pub duplicate_count: usize,
     pub empty_record_count: usize,
     pub completeness_score: f64,
     pub quality_score: f64,
-    pub text_statistics: Option<ZiCTextStatistics>,
+    pub text_statistics: Option<ZiTextStatistics>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct ZiCTextStatistics {
+pub struct ZiTextStatistics {
     pub total_chars: usize,
     pub total_words: usize,
     pub avg_chars_per_record: f64,
@@ -80,8 +80,8 @@ pub struct ZiCTextStatistics {
     pub ngram_distribution: HashMap<String, usize>,
 }
 
-#[derive(Clone, Debug)]
-pub struct ZiCProfilerConfig {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ZiProfilerConfig {
     pub sample_size: usize,
     pub max_unique_tracking: usize,
     pub max_frequency_items: usize,
@@ -91,7 +91,7 @@ pub struct ZiCProfilerConfig {
     pub ngram_size: usize,
 }
 
-impl Default for ZiCProfilerConfig {
+impl Default for ZiProfilerConfig {
     fn default() -> Self {
         Self {
             sample_size: 100,
@@ -106,37 +106,37 @@ impl Default for ZiCProfilerConfig {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct ZiCProfiler {
-    config: ZiCProfilerConfig,
+pub struct ZiProfiler {
+    config: ZiProfilerConfig,
 }
 
-impl ZiCProfiler {
+impl ZiProfiler {
     #[allow(non_snake_case)]
-    pub fn ZiFNew() -> Self {
+    pub fn new() -> Self {
         Self {
-            config: ZiCProfilerConfig::default(),
+            config: ZiProfilerConfig::default(),
         }
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFWithConfig(mut self, config: ZiCProfilerConfig) -> Self {
+    pub fn with_config(mut self, config: ZiProfilerConfig) -> Self {
         self.config = config;
         self
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFProfile(&self, batch: &ZiCRecordBatch) -> ZiCProfileReport {
+    pub fn profile(&self, batch: &ZiRecordBatch) -> ZiProfileReport {
         if batch.is_empty() {
-            return ZiCProfileReport::default();
+            return ZiProfileReport::default();
         }
 
         let total_records = batch.len();
-        let mut field_profiles: HashMap<String, ZiCFieldProfileBuilder> = HashMap::new();
+        let mut field_profiles: HashMap<String, ZiFieldProfileBuilder> = HashMap::new();
         let mut total_size = 0usize;
         let mut seen_hashes: HashSet<u64> = HashSet::new();
         let mut duplicate_count = 0usize;
         let mut empty_count = 0usize;
-        let mut text_stats_builder = ZiCTextStatsBuilder::new(self.config.ngram_size);
+        let mut text_stats_builder = ZiTextStatsBuilder::new(self.config.ngram_size);
 
         for (idx, record) in batch.iter().enumerate() {
             let record_size = Self::estimate_record_size(record);
@@ -156,7 +156,7 @@ impl ZiCProfiler {
             self.profile_record(record, idx, &mut field_profiles, &mut text_stats_builder);
         }
 
-        let field_profiles: Vec<ZiCFieldProfile> = field_profiles
+        let field_profiles: Vec<ZiFieldProfile> = field_profiles
             .into_values()
             .map(|b| b.build(&self.config))
             .collect();
@@ -177,7 +177,7 @@ impl ZiCProfiler {
             None
         };
 
-        ZiCProfileReport {
+        ZiProfileReport {
             total_records,
             total_fields,
             field_profiles,
@@ -191,7 +191,7 @@ impl ZiCProfiler {
         }
     }
 
-    fn hash_record(&self, record: &ZiCRecord) -> u64 {
+    fn hash_record(&self, record: &ZiRecord) -> u64 {
         use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
         
@@ -206,7 +206,7 @@ impl ZiCProfiler {
         hasher.finish()
     }
 
-    fn is_empty_record(&self, record: &ZiCRecord) -> bool {
+    fn is_empty_record(&self, record: &ZiRecord) -> bool {
         match &record.payload {
             Value::Null => true,
             Value::Object(map) => map.is_empty(),
@@ -218,10 +218,10 @@ impl ZiCProfiler {
 
     fn profile_record(
         &self,
-        record: &ZiCRecord,
+        record: &ZiRecord,
         idx: usize,
-        profiles: &mut HashMap<String, ZiCFieldProfileBuilder>,
-        text_stats: &mut ZiCTextStatsBuilder,
+        profiles: &mut HashMap<String, ZiFieldProfileBuilder>,
+        text_stats: &mut ZiTextStatsBuilder,
     ) {
         self.profile_value("payload", &record.payload, idx, profiles, text_stats);
         
@@ -238,11 +238,11 @@ impl ZiCProfiler {
         path: &str,
         value: &Value,
         _idx: usize,
-        profiles: &mut HashMap<String, ZiCFieldProfileBuilder>,
-        text_stats: &mut ZiCTextStatsBuilder,
+        profiles: &mut HashMap<String, ZiFieldProfileBuilder>,
+        text_stats: &mut ZiTextStatsBuilder,
     ) {
         let profile = profiles.entry(path.to_string()).or_insert_with(|| {
-            ZiCFieldProfileBuilder::new(path.to_string())
+            ZiFieldProfileBuilder::new(path.to_string())
         });
 
         profile.count += 1;
@@ -290,7 +290,7 @@ impl ZiCProfiler {
         }
     }
 
-    fn calculate_completeness(&self, profiles: &[ZiCFieldProfile], total_records: usize) -> f64 {
+    fn calculate_completeness(&self, profiles: &[ZiFieldProfile], total_records: usize) -> f64 {
         if profiles.is_empty() || total_records == 0 {
             return 0.0;
         }
@@ -303,7 +303,7 @@ impl ZiCProfiler {
 
     fn calculate_quality_score(
         &self,
-        profiles: &[ZiCFieldProfile],
+        profiles: &[ZiFieldProfile],
         total_records: usize,
         duplicate_count: usize,
         empty_count: usize,
@@ -329,7 +329,7 @@ impl ZiCProfiler {
         score.max(0.0).min(1.0)
     }
 
-    fn estimate_record_size(record: &ZiCRecord) -> usize {
+    fn estimate_record_size(record: &ZiRecord) -> usize {
         let payload_size = record.payload.to_string().len();
         let meta_size = record.metadata.as_ref()
             .and_then(|m| serde_json::to_string(m).ok())
@@ -340,7 +340,7 @@ impl ZiCProfiler {
 }
 
 #[derive(Clone)]
-struct ZiCFieldProfileBuilder {
+struct ZiFieldProfileBuilder {
     name: String,
     count: usize,
     null_count: usize,
@@ -355,7 +355,7 @@ struct ZiCFieldProfileBuilder {
     sum_numeric: f64,
 }
 
-impl ZiCFieldProfileBuilder {
+impl ZiFieldProfileBuilder {
     fn new(name: String) -> Self {
         Self {
             name,
@@ -395,7 +395,7 @@ impl ZiCFieldProfileBuilder {
         self.string_lengths.push(s.len());
     }
 
-    fn build(self, config: &ZiCProfilerConfig) -> ZiCFieldProfile {
+    fn build(self, config: &ZiProfilerConfig) -> ZiFieldProfile {
         let unique_count = if self.unique_values.len() <= config.max_unique_tracking {
             Some(self.unique_values.len())
         } else {
@@ -441,7 +441,7 @@ impl ZiCFieldProfileBuilder {
             (None, None, None, None)
         };
 
-        ZiCFieldProfile {
+        ZiFieldProfile {
             name: self.name,
             count: self.count,
             null_count: self.null_count,
@@ -457,23 +457,23 @@ impl ZiCFieldProfileBuilder {
         }
     }
 
-    fn detect_anomalies(&self, threshold: f64) -> Vec<ZiCAnomaly> {
+    fn detect_anomalies(&self, threshold: f64) -> Vec<ZiAnomaly> {
         let mut anomalies = Vec::new();
 
         let null_rate = self.null_count as f64 / self.count.max(1) as f64;
         if null_rate > 0.5 {
-            anomalies.push(ZiCAnomaly {
+            anomalies.push(ZiAnomaly {
                 anomaly_type: "high_null_rate".to_string(),
                 description: format!("Null rate is {:.1}%, exceeds 50%", null_rate * 100.0),
-                severity: ZiCAnomalySeverity::High,
+                severity: ZiAnomalySeverity::High,
                 affected_count: self.null_count,
                 sample_indices: Vec::new(),
             });
         } else if null_rate > 0.2 {
-            anomalies.push(ZiCAnomaly {
+            anomalies.push(ZiAnomaly {
                 anomaly_type: "elevated_null_rate".to_string(),
                 description: format!("Null rate is {:.1}%, exceeds 20%", null_rate * 100.0),
-                severity: ZiCAnomalySeverity::Medium,
+                severity: ZiAnomalySeverity::Medium,
                 affected_count: self.null_count,
                 sample_indices: Vec::new(),
             });
@@ -497,14 +497,14 @@ impl ZiCFieldProfileBuilder {
                     if outlier_count > 0 {
                         let outlier_rate = outlier_count as f64 / self.numeric_values.len() as f64;
                         let severity = if outlier_rate > 0.1 {
-                            ZiCAnomalySeverity::High
+                            ZiAnomalySeverity::High
                         } else if outlier_rate > 0.05 {
-                            ZiCAnomalySeverity::Medium
+                            ZiAnomalySeverity::Medium
                         } else {
-                            ZiCAnomalySeverity::Low
+                            ZiAnomalySeverity::Low
                         };
 
-                        anomalies.push(ZiCAnomaly {
+                        anomalies.push(ZiAnomaly {
                             anomaly_type: "numeric_outliers".to_string(),
                             description: format!("{} outliers detected (>{:.1} std from mean)", outlier_count, threshold),
                             severity,
@@ -525,10 +525,10 @@ impl ZiCFieldProfileBuilder {
             let std_len = variance.sqrt();
 
             if std_len > avg_len {
-                anomalies.push(ZiCAnomaly {
+                anomalies.push(ZiAnomaly {
                     anomaly_type: "high_length_variance".to_string(),
                     description: format!("String length variance is high (avg: {:.1}, std: {:.1})", avg_len, std_len),
-                    severity: ZiCAnomalySeverity::Medium,
+                    severity: ZiAnomalySeverity::Medium,
                     affected_count: self.string_lengths.len(),
                     sample_indices: Vec::new(),
                 });
@@ -539,7 +539,7 @@ impl ZiCFieldProfileBuilder {
     }
 }
 
-struct ZiCTextStatsBuilder {
+struct ZiTextStatsBuilder {
     total_chars: usize,
     total_words: usize,
     char_distribution: HashMap<char, usize>,
@@ -548,7 +548,7 @@ struct ZiCTextStatsBuilder {
     ngram_size: usize,
 }
 
-impl ZiCTextStatsBuilder {
+impl ZiTextStatsBuilder {
     fn new(ngram_size: usize) -> Self {
         Self {
             total_chars: 0,
@@ -582,7 +582,7 @@ impl ZiCTextStatsBuilder {
         }
     }
 
-    fn build(self, max_items: usize) -> ZiCTextStatistics {
+    fn build(self, max_items: usize) -> ZiTextStatistics {
         let record_count = if self.total_words > 0 { 1 } else { 1 };
         
         let mut word_frequency: Vec<(String, usize)> = self.word_frequency
@@ -594,7 +594,7 @@ impl ZiCTextStatsBuilder {
         let mut ngram_distribution = self.ngram_distribution;
         ngram_distribution.retain(|_, v| *v > 1);
 
-        ZiCTextStatistics {
+        ZiTextStatistics {
             total_chars: self.total_chars,
             total_words: self.total_words,
             avg_chars_per_record: self.total_chars as f64 / record_count as f64,

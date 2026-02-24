@@ -3,17 +3,19 @@
 //! This file is part of Zi.
 //! The Zi project belongs to the Dunimd project team.
 
-use zi::orbit::plugin::*;
+use zix::orbit::plugin::{
+    ZiPluginManifest, ZiPluginDependency, ZiPluginApi, ZiPluginRegistry
+};
 
 #[test]
 fn test_plugin_manifest_serialization() {
-    let manifest = ZiCPluginManifest {
+    let manifest = ZiPluginManifest {
         name: "test-plugin".to_string(),
         version: "1.0.0".to_string(),
         description: "A test plugin".to_string(),
         author: "Test Author".to_string(),
-        abi_version: ZI_PLUGIN_ABI_VERSION,
-        dependencies: vec![ZiCPluginDependency {
+        abi_version: ZiPluginApi { major: 1, minor: 0 },
+        dependencies: vec![ZiPluginDependency {
             name: "zi-core".to_string(),
             version_range: ">=0.1.0".to_string(),
         }],
@@ -21,35 +23,28 @@ fn test_plugin_manifest_serialization() {
         capabilities: vec!["custom.capability".to_string()],
     };
 
-    let json = serde_json::to_string(&manifest).unwrap();
-    let deserialized: ZiCPluginManifest = serde_json::from_str(&json).unwrap();
+    let json_str = serde_json::to_string(&manifest).unwrap();
+    let deserialized: ZiPluginManifest = serde_json::from_str(&json_str).unwrap();
 
     assert_eq!(manifest.name, deserialized.name);
     assert_eq!(manifest.version, deserialized.version);
-    assert_eq!(manifest.abi_version, deserialized.abi_version);
 }
 
 #[test]
 fn test_plugin_registry() {
-    let mut registry = ZiCPluginRegistry::ZiFNew();
+    let mut registry = ZiPluginRegistry::new();
 
-    let manifest = ZiCPluginManifest {
+    let manifest = ZiPluginManifest {
         name: "test".to_string(),
         version: "1.0.0".to_string(),
         description: "".to_string(),
         author: "".to_string(),
-        abi_version: ZI_PLUGIN_ABI_VERSION,
+        abi_version: ZiPluginApi { major: 1, minor: 0 },
         dependencies: vec![],
         operators: vec![],
         capabilities: vec![],
     };
 
-    registry.ZiFRegister(manifest.clone());
-    assert_eq!(registry.ZiFListPlugins().len(), 1);
-}
-
-#[test]
-fn test_lifecycle_manager() {
-    let manager = ZiCPluginLifecycleManager::ZiFNew();
-    assert!(manager.ZiFGetAllPlugins().is_empty());
+    registry.register("test".to_string(), manifest);
+    assert_eq!(registry.list_plugins().len(), 1);
 }

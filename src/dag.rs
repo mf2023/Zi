@@ -22,32 +22,32 @@ use std::hash::Hash;
 use std::sync::{Arc, Mutex};
 
 use crate::errors::{Result, ZiError};
-use crate::operator::ZiCOperator;
-use crate::record::ZiCRecord;
+use crate::operator::ZiOperator;
+use crate::record::ZiRecord;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct ZiCNodeId(pub String);
+pub struct ZiNodeId(pub String);
 
-impl fmt::Display for ZiCNodeId {
+impl fmt::Display for ZiNodeId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-impl From<&str> for ZiCNodeId {
+impl From<&str> for ZiNodeId {
     fn from(s: &str) -> Self {
-        ZiCNodeId(s.to_string())
+        ZiNodeId(s.to_string())
     }
 }
 
-impl From<String> for ZiCNodeId {
+impl From<String> for ZiNodeId {
     fn from(s: String) -> Self {
-        ZiCNodeId(s)
+        ZiNodeId(s)
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct ZiCGraphNodeConfig {
+pub struct ZiGraphNodeConfig {
     pub name: String,
     pub operator: String,
     pub config: serde_json::Value,
@@ -56,15 +56,15 @@ pub struct ZiCGraphNodeConfig {
 }
 
 #[derive(Clone, Debug)]
-pub struct ZiCGraphNode {
-    pub id: ZiCNodeId,
-    pub config: ZiCGraphNodeConfig,
-    pub dependencies: Vec<ZiCNodeId>,
+pub struct ZiGraphNode {
+    pub id: ZiNodeId,
+    pub config: ZiGraphNodeConfig,
+    pub dependencies: Vec<ZiNodeId>,
 }
 
-impl ZiCGraphNode {
+impl ZiGraphNode {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(id: ZiCNodeId, config: ZiCGraphNodeConfig) -> Self {
+    pub fn new(id: ZiNodeId, config: ZiGraphNodeConfig) -> Self {
         Self {
             id,
             config,
@@ -73,7 +73,7 @@ impl ZiCGraphNode {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFAddDependency(&mut self, dep: ZiCNodeId) {
+    pub fn add_dependency(&mut self, dep: ZiNodeId) {
         if !self.dependencies.contains(&dep) {
             self.dependencies.push(dep);
         }
@@ -81,20 +81,20 @@ impl ZiCGraphNode {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct ZiCDAG {
-    pub nodes: HashMap<ZiCNodeId, ZiCGraphNode>,
-    pub entry_points: Vec<ZiCNodeId>,
-    pub exit_points: Vec<ZiCNodeId>,
+pub struct ZiDAG {
+    pub nodes: HashMap<ZiNodeId, ZiGraphNode>,
+    pub entry_points: Vec<ZiNodeId>,
+    pub exit_points: Vec<ZiNodeId>,
 }
 
-impl ZiCDAG {
+impl ZiDAG {
     #[allow(non_snake_case)]
-    pub fn ZiFNew() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFAddNode(&mut self, node: ZiCGraphNode) -> Result<()> {
+    pub fn add_node(&mut self, node: ZiGraphNode) -> Result<()> {
         if self.nodes.contains_key(&node.id) {
             return Err(ZiError::validation(format!(
                 "node '{}' already exists",
@@ -106,7 +106,7 @@ impl ZiCDAG {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFAddEdge(&mut self, from: ZiCNodeId, to: ZiCNodeId) -> Result<()> {
+    pub fn add_edge(&mut self, from: ZiNodeId, to: ZiNodeId) -> Result<()> {
         if !self.nodes.contains_key(&from) {
             return Err(ZiError::validation(format!(
                 "source node '{}' not found",
@@ -123,11 +123,7 @@ impl ZiCDAG {
         self.nodes
             .get_mut(&to)
             .ok_or_else(|| ZiError::validation("node not found".to_string()))?
-            .ZiFAddDependency(from.clone());
-
-        if !self.entry_points.contains(&to) {
-            self.entry_points.push(to);
-        }
+            .add_dependency(from.clone());
 
         if self.nodes.get(&from).map(|n| n.dependencies.is_empty()).unwrap_or(false)
             && !self.entry_points.contains(&from)
@@ -135,12 +131,30 @@ impl ZiCDAG {
             self.entry_points.push(from.clone());
         }
 
+        self.recompute_exit_points();
+
         Ok(())
     }
 
+    fn recompute_exit_points(&mut self) {
+        let mut has_dependents: HashSet<ZiNodeId> = HashSet::new();
+        for node in self.nodes.values() {
+            for dep in &node.dependencies {
+                has_dependents.insert(dep.clone());
+            }
+        }
+
+        self.exit_points = self
+            .nodes
+            .keys()
+            .filter(|id| !has_dependents.contains(id))
+            .cloned()
+            .collect();
+    }
+
     #[allow(non_snake_case)]
-    pub fn ZiFTopologicalSort(&self) -> Result<Vec<ZiCNodeId>> {
-        let mut in_degree: HashMap<ZiCNodeId, usize> = self
+    pub fn topological_sort(&self) -> Result<Vec<ZiNodeId>> {
+        let mut in_degree: HashMap<ZiNodeId, usize> = self
             .nodes
             .keys()
             .map(|id| (id.clone(), 0))
@@ -154,13 +168,13 @@ impl ZiCDAG {
             }
         }
 
-        let mut queue: VecDeque<ZiCNodeId> = in_degree
+        let mut queue: VecDeque<ZiNodeId> = in_degree
             .iter()
             .filter(|(_, &count)| count == 0)
             .map(|(id, _)| id.clone())
             .collect();
 
-        let mut sorted: Vec<ZiCNodeId> = Vec::new();
+        let mut sorted: Vec<ZiNodeId> = Vec::new();
 
         while let Some(node_id) = queue.pop_front() {
             sorted.push(node_id.clone());
@@ -193,15 +207,15 @@ impl ZiCDAG {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFDetectCycles(&self) -> bool {
-        self.ZiFTopologicalSort().is_err()
+    pub fn detect_cycles(&self) -> bool {
+        self.topological_sort().is_err()
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFGetParallelGroups(&self, sorted: &[ZiCNodeId]) -> Vec<Vec<ZiCNodeId>> {
-        let mut groups: Vec<Vec<ZiCNodeId>> = Vec::new();
-        let mut current_group: Vec<ZiCNodeId> = Vec::new();
-        let mut processed_deps: HashSet<ZiCNodeId> = HashSet::new();
+    pub fn get_parallel_groups(&self, sorted: &[ZiNodeId]) -> Vec<Vec<ZiNodeId>> {
+        let mut groups: Vec<Vec<ZiNodeId>> = Vec::new();
+        let mut current_group: Vec<ZiNodeId> = Vec::new();
+        let mut processed_deps: HashSet<ZiNodeId> = HashSet::new();
 
         for node_id in sorted {
             let node = match self.nodes.get(node_id) {
@@ -236,7 +250,7 @@ impl ZiCDAG {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ZiCCheckpointState {
+pub struct ZiCheckpointState {
     pub node_id: String,
     pub record_count: usize,
     pub data_hash: String,
@@ -244,21 +258,21 @@ pub struct ZiCCheckpointState {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct ZiCCheckpointStore {
-    states: HashMap<String, ZiCCheckpointState>,
+pub struct ZiCheckpointStore {
+    states: HashMap<String, ZiCheckpointState>,
 }
 
-impl ZiCCheckpointStore {
+impl ZiCheckpointStore {
     #[allow(non_snake_case)]
-    pub fn ZiFNew() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFSave(&mut self, node_id: &str, record_count: usize, data_hash: String) {
+    pub fn save(&mut self, node_id: &str, record_count: usize, data_hash: String) {
         self.states.insert(
             node_id.to_string(),
-            ZiCCheckpointState {
+            ZiCheckpointState {
                 node_id: node_id.to_string(),
                 record_count,
                 data_hash,
@@ -271,24 +285,24 @@ impl ZiCCheckpointStore {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFLoad(&self, node_id: &str) -> Option<&ZiCCheckpointState> {
+    pub fn load(&self, node_id: &str) -> Option<&ZiCheckpointState> {
         self.states.get(node_id)
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFGetNodeStates(&self) -> HashMap<String, ZiCCheckpointState> {
+    pub fn get_node_states(&self) -> HashMap<String, ZiCheckpointState> {
         self.states.clone()
     }
 }
 
-pub struct ZiCSchedulerConfig {
+pub struct ZiSchedulerConfig {
     pub max_parallelism: usize,
     pub cache_enabled: bool,
     pub checkpoint_enabled: bool,
     pub retry_count: usize,
 }
 
-impl Default for ZiCSchedulerConfig {
+impl Default for ZiSchedulerConfig {
     fn default() -> Self {
         Self {
             max_parallelism: num_cpus::get(),
@@ -299,46 +313,46 @@ impl Default for ZiCSchedulerConfig {
     }
 }
 
-pub trait ZiCOperatorFactoryTrait: Send + Sync {
-    fn create(&self, name: &str, config: &serde_json::Value) -> Result<Box<dyn ZiCOperator + Send + Sync>>;
+pub trait ZiOperatorFactoryTrait: Send + Sync {
+    fn create(&self, name: &str, config: &serde_json::Value) -> Result<Box<dyn ZiOperator + Send + Sync>>;
 }
 
 #[allow(dead_code)]
-pub struct ZiCScheduler {
-    config: ZiCSchedulerConfig,
-    checkpoint_store: Arc<Mutex<ZiCCheckpointStore>>,
-    operator_factory: Arc<dyn ZiCOperatorFactoryTrait>,
+pub struct ZiScheduler {
+    config: ZiSchedulerConfig,
+    checkpoint_store: Arc<Mutex<ZiCheckpointStore>>,
+    operator_factory: Arc<dyn ZiOperatorFactoryTrait>,
 }
 
-impl ZiCScheduler {
+impl ZiScheduler {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(
-        operator_factory: Arc<dyn ZiCOperatorFactoryTrait>,
+    pub fn new(
+        operator_factory: Arc<dyn ZiOperatorFactoryTrait>,
     ) -> Self {
         Self {
-            config: ZiCSchedulerConfig::default(),
-            checkpoint_store: Arc::new(Mutex::new(ZiCCheckpointStore::ZiFNew())),
+            config: ZiSchedulerConfig::default(),
+            checkpoint_store: Arc::new(Mutex::new(ZiCheckpointStore::new())),
             operator_factory,
         }
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFWithConfig(
-        operator_factory: Arc<dyn ZiCOperatorFactoryTrait>,
-        config: ZiCSchedulerConfig,
+    pub fn with_config(
+        operator_factory: Arc<dyn ZiOperatorFactoryTrait>,
+        config: ZiSchedulerConfig,
     ) -> Self {
         Self {
             config,
-            checkpoint_store: Arc::new(Mutex::new(ZiCCheckpointStore::ZiFNew())),
+            checkpoint_store: Arc::new(Mutex::new(ZiCheckpointStore::new())),
             operator_factory,
         }
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFExecute(&self, dag: &mut ZiCDAG, input: &[ZiCRecord]) -> Result<Vec<ZiCRecord>> {
-        let sorted_nodes = dag.ZiFTopologicalSort()?;
-        let mut node_outputs: HashMap<ZiCNodeId, Vec<ZiCRecord>> = HashMap::new();
-        node_outputs.insert(ZiCNodeId::from("__input__"), input.to_vec());
+    pub fn execute(&self, dag: &mut ZiDAG, input: &[ZiRecord]) -> Result<Vec<ZiRecord>> {
+        let sorted_nodes = dag.topological_sort()?;
+        let mut node_outputs: HashMap<ZiNodeId, Vec<ZiRecord>> = HashMap::new();
+        node_outputs.insert(ZiNodeId::from("__input__"), input.to_vec());
 
         for node_id in sorted_nodes {
             let node = match dag.nodes.get(&node_id) {
@@ -346,7 +360,7 @@ impl ZiCScheduler {
                 None => continue,
             };
 
-            let inputs: Vec<ZiCRecord> = node
+            let inputs: Vec<ZiRecord> = node
                 .dependencies
                 .iter()
                 .flat_map(|dep| {
@@ -366,7 +380,7 @@ impl ZiCScheduler {
             node_outputs.insert(node_id, output);
         }
 
-        let final_outputs: Vec<ZiCRecord> = dag
+        let final_outputs: Vec<ZiRecord> = dag
             .exit_points
             .iter()
             .flat_map(|id| node_outputs.get(id).cloned().unwrap_or_default())
@@ -376,7 +390,7 @@ impl ZiCScheduler {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFGetCheckpointStore(&self) -> Arc<Mutex<ZiCCheckpointStore>> {
+    pub fn get_checkpoint_store(&self) -> Arc<Mutex<ZiCheckpointStore>> {
         self.checkpoint_store.clone()
     }
 }

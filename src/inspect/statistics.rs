@@ -18,10 +18,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::record::ZiCRecordBatch;
+use crate::record::ZiRecordBatch;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct ZiCNumericStats {
+pub struct ZiNumericStats {
     pub count: usize,
     pub mean: f64,
     pub std_dev: f64,
@@ -35,7 +35,7 @@ pub struct ZiCNumericStats {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct ZiCStringStats {
+pub struct ZiStringStats {
     pub count: usize,
     pub empty_count: usize,
     pub min_length: usize,
@@ -45,14 +45,14 @@ pub struct ZiCStringStats {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct ZiCStatistics {
-    pub numeric_stats: std::collections::HashMap<String, ZiCNumericStats>,
-    pub string_stats: std::collections::HashMap<String, ZiCStringStats>,
+pub struct ZiStatistics {
+    pub numeric_stats: std::collections::HashMap<String, ZiNumericStats>,
+    pub string_stats: std::collections::HashMap<String, ZiStringStats>,
 }
 
-impl ZiCStatistics {
+impl ZiStatistics {
     #[allow(non_snake_case)]
-    pub fn ZiFCompute(batch: &ZiCRecordBatch) -> Self {
+    pub fn compute(batch: &ZiRecordBatch) -> Self {
         let mut stats = Self::default();
 
         let mut numeric_values: std::collections::HashMap<String, Vec<f64>> = 
@@ -110,9 +110,9 @@ impl ZiCStatistics {
         }
     }
 
-    fn compute_numeric_stats(values: &[f64]) -> ZiCNumericStats {
+    fn compute_numeric_stats(values: &[f64]) -> ZiNumericStats {
         if values.is_empty() {
-            return ZiCNumericStats::default();
+            return ZiNumericStats::default();
         }
 
         let count = values.len();
@@ -133,7 +133,7 @@ impl ZiCStatistics {
         let p95 = sorted[((count as f64 * 0.95) as usize).min(count - 1)];
         let p99 = sorted[((count as f64 * 0.99) as usize).min(count - 1)];
 
-        ZiCNumericStats {
+        ZiNumericStats {
             count,
             mean,
             std_dev,
@@ -147,9 +147,9 @@ impl ZiCStatistics {
         }
     }
 
-    fn compute_string_stats(values: &[String]) -> ZiCStringStats {
+    fn compute_string_stats(values: &[String]) -> ZiStringStats {
         if values.is_empty() {
-            return ZiCStringStats::default();
+            return ZiStringStats::default();
         }
 
         let count = values.len();
@@ -162,7 +162,7 @@ impl ZiCStatistics {
 
         let unique_count = values.iter().collect::<std::collections::HashSet<_>>().len();
 
-        ZiCStringStats {
+        ZiStringStats {
             count,
             empty_count,
             min_length,

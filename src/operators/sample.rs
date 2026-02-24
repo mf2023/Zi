@@ -20,10 +20,10 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use crate::errors::{Result, ZiError};
-use crate::operator::ZiCOperator;
-use crate::record::{ZiCRecord, ZiCRecordBatch};
+use crate::operator::ZiOperator;
+use crate::record::{ZiRecord, ZiRecordBatch};
 
-fn _sample_stable_hash(record: &ZiCRecord, seed: u64) -> u64 {
+fn _sample_stable_hash(record: &ZiRecord, seed: u64) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
@@ -54,7 +54,7 @@ fn _value_to_group_key(value: &Value) -> String {
 }
 
 #[derive(Debug)]
-pub struct ZiCSampleRandom {
+pub struct ZiSampleRandom {
     ratio: Option<f64>,
     count: Option<usize>,
     seed: u64,
@@ -63,9 +63,9 @@ pub struct ZiCSampleRandom {
     min_per_group: Option<usize>,
 }
 
-impl ZiCSampleRandom {
+impl ZiSampleRandom {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(
+    pub fn new(
         ratio: Option<f64>,
         count: Option<usize>,
         seed: u64,
@@ -84,12 +84,12 @@ impl ZiCSampleRandom {
     }
 }
 
-impl ZiCOperator for ZiCSampleRandom {
+impl ZiOperator for ZiSampleRandom {
     fn name(&self) -> &'static str {
         "sample.random"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         if self.ratio.is_none() && self.count.is_none() {
             return Err(ZiError::validation(
                 "sample.random requires 'ratio' or 'count'",
@@ -110,7 +110,7 @@ impl ZiCOperator for ZiCSampleRandom {
             ));
         }
 
-        let mut grouped: HashMap<String, Vec<(f64, u64, ZiCRecord)>> = HashMap::new();
+        let mut grouped: HashMap<String, Vec<(f64, u64, ZiRecord)>> = HashMap::new();
         let mut total_records = 0usize;
 
         for record in batch.into_iter() {
@@ -191,7 +191,7 @@ impl ZiCOperator for ZiCSampleRandom {
         }
 
         if self.group_key.is_none() {
-            let mut combined: Vec<(f64, u64, ZiCRecord)> =
+            let mut combined: Vec<(f64, u64, ZiRecord)> =
                 grouped.into_values().flatten().collect();
             combined.sort_by(|a, b| {
                 b.0.partial_cmp(&a.0)
@@ -205,7 +205,7 @@ impl ZiCOperator for ZiCSampleRandom {
                 .collect());
         }
 
-        let mut groups: Vec<(String, Vec<(f64, u64, ZiCRecord)>)> = grouped.into_iter().collect();
+        let mut groups: Vec<(String, Vec<(f64, u64, ZiRecord)>)> = grouped.into_iter().collect();
         groups.sort_by(|a, b| a.0.cmp(&b.0));
 
         for (_, items) in groups.iter_mut() {
@@ -216,7 +216,7 @@ impl ZiCOperator for ZiCSampleRandom {
             });
         }
 
-        let mut selected: Vec<ZiCRecord> = Vec::with_capacity(target);
+        let mut selected: Vec<ZiRecord> = Vec::with_capacity(target);
         let mut remaining = target;
         let min_each = self.min_per_group.unwrap_or(0);
 
@@ -238,7 +238,7 @@ impl ZiCOperator for ZiCSampleRandom {
         }
 
         if remaining > 0 {
-            let mut leftovers: Vec<(f64, u64, ZiCRecord)> = groups
+            let mut leftovers: Vec<(f64, u64, ZiRecord)> = groups
                 .into_iter()
                 .flat_map(|(_, items)| items.into_iter())
                 .collect();
@@ -261,7 +261,7 @@ impl ZiCOperator for ZiCSampleRandom {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFSampleRandomFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn sample_random_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("sample.random config must be object"))?;
@@ -283,7 +283,7 @@ pub fn ZiFSampleRandomFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Se
         .get("min_per_group")
         .and_then(Value::as_u64)
         .map(|v| v as usize);
-    Ok(Box::new(ZiCSampleRandom::ZiFNew(
+    Ok(Box::new(ZiSampleRandom::new(
         ratio,
         count,
         seed,
@@ -294,24 +294,24 @@ pub fn ZiFSampleRandomFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Se
 }
 
 #[derive(Debug)]
-pub struct ZiCSampleTop {
+pub struct ZiSampleTop {
     key: String,
     count: usize,
 }
 
-impl ZiCSampleTop {
+impl ZiSampleTop {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(key: String, count: usize) -> Self {
+    pub fn new(key: String, count: usize) -> Self {
         Self { key, count }
     }
 }
 
-impl ZiCOperator for ZiCSampleTop {
+impl ZiOperator for ZiSampleTop {
     fn name(&self) -> &'static str {
         "sample.top"
     }
 
-    fn apply(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, mut batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         batch.sort_by(|a, b| {
             let av = a
                 .metadata
@@ -332,21 +332,561 @@ impl ZiCOperator for ZiCSampleTop {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFSampleTopFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn sample_top_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("sample.top config must be object"))?;
     let key = obj
         .get("key")
         .and_then(Value::as_str)
+        .or_else(|| obj.get("path").and_then(Value::as_str))
         .unwrap_or("quality")
         .to_string();
     let count = obj
         .get("count")
         .and_then(Value::as_u64)
-        .ok_or_else(|| ZiError::validation("sample.top requires unsigned integer 'count'"))?
+        .or_else(|| obj.get("n").and_then(Value::as_u64))
+        .ok_or_else(|| ZiError::validation("sample.top requires unsigned integer 'count' or 'n'"))?
         as usize;
-    Ok(Box::new(ZiCSampleTop::ZiFNew(key, count)))
+    Ok(Box::new(ZiSampleTop::new(key, count)))
+}
+
+#[derive(Debug, Clone)]
+pub enum ZiBalanceStrategy {
+    Undersample,
+    Oversample,
+    Hybrid,
+}
+
+#[derive(Debug)]
+pub struct ZiSampleBalanced {
+    label_field: String,
+    max_per_class: Option<usize>,
+    min_per_class: Option<usize>,
+    strategy: ZiBalanceStrategy,
+    seed: u64,
+}
+
+impl ZiSampleBalanced {
+    #[allow(non_snake_case)]
+    pub fn new(
+        label_field: String,
+        max_per_class: Option<usize>,
+        min_per_class: Option<usize>,
+        strategy: ZiBalanceStrategy,
+        seed: u64,
+    ) -> Self {
+        Self {
+            label_field,
+            max_per_class,
+            min_per_class,
+            strategy,
+            seed,
+        }
+    }
+
+    fn get_label(&self, record: &ZiRecord) -> String {
+        let parts: Vec<&str> = self.label_field.split('.').collect();
+        if parts.len() < 2 {
+            return "unknown".to_string();
+        }
+
+        let mut current = &record.payload;
+        for part in &parts[1..] {
+            if let Value::Object(map) = current {
+                current = map.get(*part).unwrap_or(&Value::Null);
+            } else {
+                break;
+            }
+        }
+
+        match current {
+            Value::String(s) => s.clone(),
+            Value::Number(n) => n.to_string(),
+            Value::Bool(b) => b.to_string(),
+            _ => "unknown".to_string(),
+        }
+    }
+}
+
+impl ZiOperator for ZiSampleBalanced {
+    fn name(&self) -> &'static str {
+        "sample.balanced"
+    }
+
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
+        use rand::seq::SliceRandom;
+        use rand::SeedableRng;
+        use rand::rngs::StdRng;
+
+        if batch.is_empty() {
+            return Ok(batch);
+        }
+
+        let mut rng = StdRng::seed_from_u64(self.seed);
+
+        let mut groups: HashMap<String, ZiRecordBatch> = HashMap::new();
+        for record in batch {
+            let label = self.get_label(&record);
+            groups.entry(label).or_default().push(record);
+        }
+
+        for (_, group) in groups.iter_mut() {
+            group.shuffle(&mut rng);
+        }
+
+        let class_counts: Vec<usize> = groups.values().map(|g| g.len()).collect();
+        let min_count = class_counts.iter().min().copied().unwrap_or(0);
+        let max_count = class_counts.iter().max().copied().unwrap_or(0);
+
+        let target_per_class = match &self.strategy {
+            ZiBalanceStrategy::Undersample => {
+                self.max_per_class.unwrap_or(min_count).min(min_count)
+            }
+            ZiBalanceStrategy::Oversample => {
+                self.min_per_class.unwrap_or(max_count).max(max_count)
+            }
+            ZiBalanceStrategy::Hybrid => {
+                let target = (min_count + max_count) / 2;
+                if let Some(max) = self.max_per_class {
+                    target.min(max)
+                } else if let Some(min) = self.min_per_class {
+                    target.max(min)
+                } else {
+                    target
+                }
+            }
+        };
+
+        let mut result = Vec::new();
+
+        for (_, group) in groups {
+            let count = group.len();
+
+            if count >= target_per_class {
+                let taken: Vec<_> = group.into_iter().take(target_per_class).collect();
+                result.extend(taken);
+            } else {
+                result.extend(group.clone());
+
+                let needed = target_per_class - count;
+                for _ in 0..needed {
+                    if let Some(record) = group.choose(&mut rng) {
+                        result.push(record.clone());
+                    }
+                }
+            }
+        }
+
+        result.shuffle(&mut rng);
+        Ok(result)
+    }
+}
+
+#[allow(non_snake_case)]
+pub fn sample_balanced_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
+    let obj = config
+        .as_object()
+        .ok_or_else(|| ZiError::validation("sample.balanced config must be object"))?;
+
+    let label_field = obj
+        .get("label_field")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ZiError::validation("sample.balanced requires string 'label_field'"))?
+        .to_string();
+
+    let max_per_class = obj.get("max_per_class").and_then(Value::as_u64).map(|v| v as usize);
+    let min_per_class = obj.get("min_per_class").and_then(Value::as_u64).map(|v| v as usize);
+
+    let strategy = match obj.get("strategy").and_then(Value::as_str) {
+        Some("undersample") => ZiBalanceStrategy::Undersample,
+        Some("oversample") => ZiBalanceStrategy::Oversample,
+        Some("hybrid") | _ => ZiBalanceStrategy::Hybrid,
+    };
+
+    let seed = obj
+        .get("seed")
+        .and_then(Value::as_u64)
+        .unwrap_or(0xCAFEBABE);
+
+    Ok(Box::new(ZiSampleBalanced::new(
+        label_field,
+        max_per_class,
+        min_per_class,
+        strategy,
+        seed,
+    )))
+}
+
+#[derive(Debug)]
+pub struct ZiSampleByDistribution {
+    field: String,
+    target_distribution: HashMap<String, f64>,
+    total_count: usize,
+    seed: u64,
+}
+
+impl ZiSampleByDistribution {
+    #[allow(non_snake_case)]
+    pub fn new(
+        field: String,
+        target_distribution: HashMap<String, f64>,
+        total_count: usize,
+        seed: u64,
+    ) -> Self {
+        Self {
+            field,
+            target_distribution,
+            total_count,
+            seed,
+        }
+    }
+
+    fn get_field_value(&self, record: &ZiRecord) -> String {
+        let parts: Vec<&str> = self.field.split('.').collect();
+        if parts.len() < 2 {
+            return "unknown".to_string();
+        }
+
+        let mut current = &record.payload;
+        for part in &parts[1..] {
+            if let Value::Object(map) = current {
+                current = map.get(*part).unwrap_or(&Value::Null);
+            } else {
+                break;
+            }
+        }
+
+        match current {
+            Value::String(s) => s.clone(),
+            Value::Number(n) => n.to_string(),
+            Value::Bool(b) => b.to_string(),
+            _ => "unknown".to_string(),
+        }
+    }
+}
+
+impl ZiOperator for ZiSampleByDistribution {
+    fn name(&self) -> &'static str {
+        "sample.by_distribution"
+    }
+
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
+        use rand::seq::SliceRandom;
+        use rand::SeedableRng;
+        use rand::rngs::StdRng;
+
+        if batch.is_empty() {
+            return Ok(batch);
+        }
+
+        let mut rng = StdRng::seed_from_u64(self.seed);
+
+        let mut groups: HashMap<String, ZiRecordBatch> = HashMap::new();
+        for record in batch {
+            let value = self.get_field_value(&record);
+            groups.entry(value).or_default().push(record);
+        }
+
+        for (_, group) in groups.iter_mut() {
+            group.shuffle(&mut rng);
+        }
+
+        let mut result = Vec::with_capacity(self.total_count);
+
+        let dist_sum: f64 = self.target_distribution.values().sum();
+        let normalized_dist: HashMap<String, f64> = if dist_sum > 0.0 {
+            self.target_distribution
+                .iter()
+                .map(|(k, v)| (k.clone(), v / dist_sum))
+                .collect()
+        } else {
+            let uniform = 1.0 / groups.len() as f64;
+            groups.keys().map(|k| (k.clone(), uniform)).collect()
+        };
+
+        for (label, ratio) in &normalized_dist {
+            let target_count = (*ratio * self.total_count as f64).round() as usize;
+
+            if let Some(group) = groups.get_mut(label) {
+                let take = target_count.min(group.len());
+                result.extend(group.drain(..take));
+            }
+        }
+
+        result.shuffle(&mut rng);
+        result.truncate(self.total_count);
+        Ok(result)
+    }
+}
+
+#[allow(non_snake_case)]
+pub fn sample_by_distribution_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
+    let obj = config
+        .as_object()
+        .ok_or_else(|| ZiError::validation("sample.by_distribution config must be object"))?;
+
+    let field = obj
+        .get("field")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ZiError::validation("sample.by_distribution requires string 'field'"))?
+        .to_string();
+
+    let target_distribution = obj
+        .get("target_distribution")
+        .and_then(Value::as_object)
+        .ok_or_else(|| ZiError::validation("sample.by_distribution requires object 'target_distribution'"))?
+        .iter()
+        .map(|(k, v)| {
+            v.as_f64()
+                .ok_or_else(|| ZiError::validation("distribution values must be numbers"))
+                .map(|f| (k.clone(), f))
+        })
+        .collect::<Result<HashMap<_, _>>>()?;
+
+    let total_count = obj
+        .get("total_count")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| ZiError::validation("sample.by_distribution requires integer 'total_count'"))?
+        as usize;
+
+    let seed = obj
+        .get("seed")
+        .and_then(Value::as_u64)
+        .unwrap_or(0xCAFEBABE);
+
+    Ok(Box::new(ZiSampleByDistribution::new(
+        field,
+        target_distribution,
+        total_count,
+        seed,
+    )))
+}
+
+#[derive(Debug)]
+pub struct ZiSampleByLength {
+    text_field: String,
+    min_length: usize,
+    max_length: usize,
+    target_count: Option<usize>,
+    seed: u64,
+}
+
+impl ZiSampleByLength {
+    #[allow(non_snake_case)]
+    pub fn new(
+        text_field: String,
+        min_length: usize,
+        max_length: usize,
+        target_count: Option<usize>,
+        seed: u64,
+    ) -> Self {
+        Self {
+            text_field,
+            min_length,
+            max_length,
+            target_count,
+            seed,
+        }
+    }
+
+    fn get_text_length(&self, record: &ZiRecord) -> usize {
+        let parts: Vec<&str> = self.text_field.split('.').collect();
+        if parts.len() < 2 {
+            return 0;
+        }
+
+        let mut current = &record.payload;
+        for part in &parts[1..] {
+            if let Value::Object(map) = current {
+                current = map.get(*part).unwrap_or(&Value::Null);
+            } else {
+                break;
+            }
+        }
+
+        match current {
+            Value::String(s) => s.chars().count(),
+            _ => 0,
+        }
+    }
+}
+
+impl ZiOperator for ZiSampleByLength {
+    fn name(&self) -> &'static str {
+        "sample.by_length"
+    }
+
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
+        use rand::seq::SliceRandom;
+        use rand::SeedableRng;
+        use rand::rngs::StdRng;
+
+        if batch.is_empty() {
+            return Ok(batch);
+        }
+
+        let mut rng = StdRng::seed_from_u64(self.seed);
+
+        let mut filtered: Vec<ZiRecord> = batch
+            .into_iter()
+            .filter(|record| {
+                let len = self.get_text_length(record);
+                len >= self.min_length && len <= self.max_length
+            })
+            .collect();
+
+        filtered.shuffle(&mut rng);
+
+        if let Some(count) = self.target_count {
+            filtered.truncate(count);
+        }
+
+        Ok(filtered)
+    }
+}
+
+#[allow(non_snake_case)]
+pub fn sample_by_length_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
+    let obj = config
+        .as_object()
+        .ok_or_else(|| ZiError::validation("sample.by_length config must be object"))?;
+
+    let text_field = obj
+        .get("text_field")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ZiError::validation("sample.by_length requires string 'text_field'"))?
+        .to_string();
+
+    let min_length = obj
+        .get("min_length")
+        .and_then(Value::as_u64)
+        .unwrap_or(0) as usize;
+
+    let max_length = obj
+        .get("max_length")
+        .and_then(Value::as_u64)
+        .unwrap_or(usize::MAX as u64) as usize;
+
+    let target_count = obj.get("target_count").and_then(Value::as_u64).map(|v| v as usize);
+
+    let seed = obj
+        .get("seed")
+        .and_then(Value::as_u64)
+        .unwrap_or(0xCAFEBABE);
+
+    Ok(Box::new(ZiSampleByLength::new(
+        text_field,
+        min_length,
+        max_length,
+        target_count,
+        seed,
+    )))
+}
+
+#[derive(Debug)]
+pub struct ZiSampleStratified {
+    field: String,
+    count: usize,
+    seed: u64,
+}
+
+impl ZiSampleStratified {
+    #[allow(non_snake_case)]
+    pub fn new(field: String, count: usize, seed: u64) -> Self {
+        Self { field, count, seed }
+    }
+
+    fn get_field_value(&self, record: &ZiRecord) -> String {
+        let parts: Vec<&str> = self.field.split('.').collect();
+        if parts.len() < 2 {
+            return "unknown".to_string();
+        }
+
+        let mut current = &record.payload;
+        for part in &parts[1..] {
+            if let Value::Object(map) = current {
+                current = map.get(*part).unwrap_or(&Value::Null);
+            } else {
+                break;
+            }
+        }
+
+        match current {
+            Value::String(s) => s.clone(),
+            Value::Number(n) => n.to_string(),
+            Value::Bool(b) => b.to_string(),
+            _ => "unknown".to_string(),
+        }
+    }
+}
+
+impl ZiOperator for ZiSampleStratified {
+    fn name(&self) -> &'static str {
+        "sample.stratified"
+    }
+
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
+        use rand::seq::SliceRandom;
+        use rand::SeedableRng;
+        use rand::rngs::StdRng;
+
+        if batch.is_empty() {
+            return Ok(batch);
+        }
+
+        let mut rng = StdRng::seed_from_u64(self.seed);
+
+        let mut groups: HashMap<String, ZiRecordBatch> = HashMap::new();
+        for record in batch {
+            let value = self.get_field_value(&record);
+            groups.entry(value).or_default().push(record);
+        }
+
+        for (_, group) in groups.iter_mut() {
+            group.shuffle(&mut rng);
+        }
+
+        let total = groups.values().map(|g| g.len()).sum::<usize>();
+        let ratio = self.count as f64 / total as f64;
+
+        let mut result = Vec::with_capacity(self.count);
+
+        for (_, group) in groups {
+            let target = (group.len() as f64 * ratio).round() as usize;
+            result.extend(group.into_iter().take(target));
+        }
+
+        result.shuffle(&mut rng);
+        result.truncate(self.count);
+        Ok(result)
+    }
+}
+
+#[allow(non_snake_case)]
+pub fn sample_stratified_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
+    let obj = config
+        .as_object()
+        .ok_or_else(|| ZiError::validation("sample.stratified config must be object"))?;
+
+    let field = obj
+        .get("field")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ZiError::validation("sample.stratified requires string 'field'"))?
+        .to_string();
+
+    let count = obj
+        .get("count")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| ZiError::validation("sample.stratified requires integer 'count'"))?
+        as usize;
+
+    let seed = obj
+        .get("seed")
+        .and_then(Value::as_u64)
+        .unwrap_or(0xCAFEBABE);
+
+    Ok(Box::new(ZiSampleStratified::new(field, count, seed)))
 }
 
 

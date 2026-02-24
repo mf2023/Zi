@@ -18,10 +18,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::record::ZiCRecord;
+use crate::record::ZiRecord;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct ZiCQualityMetrics {
+pub struct ZiQualityMetrics {
     pub total_records: usize,
     pub average_payload_chars: f64,
     pub average_payload_tokens: f64,
@@ -33,9 +33,9 @@ pub struct ZiCQualityMetrics {
     pub error_count: usize,
 }
 
-impl ZiCQualityMetrics {
+impl ZiQualityMetrics {
     #[allow(non_snake_case)]
-    pub fn ZiFCompute(batch: &[ZiCRecord]) -> Self {
+    pub fn compute(batch: &[ZiRecord]) -> Self {
         if batch.is_empty() {
             return Self::default();
         }
@@ -92,13 +92,13 @@ impl ZiCQualityMetrics {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFNew() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct ZiCStatisticSummary {
+pub struct ZiStatisticSummary {
     pub count: usize,
     pub mean: f64,
     pub std_dev: f64,
@@ -111,7 +111,7 @@ pub struct ZiCStatisticSummary {
     pub p99: f64,
 }
 
-impl ZiCStatisticSummary {
+impl ZiStatisticSummary {
     pub fn from_slice(values: &[f64]) -> Self {
         if values.is_empty() {
             return Self::default();

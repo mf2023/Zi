@@ -19,33 +19,33 @@ use regex::Regex;
 use serde_json::Value;
 
 use crate::errors::{Result, ZiError};
-use crate::operator::ZiCOperator;
-use crate::record::{ZiCRecord, ZiCRecordBatch};
+use crate::operator::ZiOperator;
+use crate::record::{ZiRecord, ZiRecordBatch};
 
 /// Keeps records whose field equals a target [`Value`].
 #[derive(Debug)]
-pub struct ZiCFilterEquals {
-    path: ZiCFieldPath,
+pub struct ZiFilterEquals {
+    path: ZiFieldPath,
     equals: Value,
 }
 
-impl ZiCFilterEquals {
+impl ZiFilterEquals {
     /// Creates a new filter operator.
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, equals: Value) -> Self {
+    pub fn new(path: ZiFieldPath, equals: Value) -> Self {
         Self { path, equals }
     }
 }
 
-impl ZiCOperator for ZiCFilterEquals {
+impl ZiOperator for ZiFilterEquals {
     fn name(&self) -> &'static str {
         "filter.equals"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(value) => value == &self.equals,
                 None => false,
             })
@@ -53,9 +53,9 @@ impl ZiCOperator for ZiCFilterEquals {
     }
 }
 
-/// Factory that constructs [`ZiCFilterEquals`] from JSON configuration.
+/// Factory that constructs [`ZiFilterEquals`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterEqualsFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_equals_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.equals config must be object"))?;
@@ -65,38 +65,38 @@ pub fn ZiFFilterEqualsFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Se
         .and_then(Value::as_str)
         .ok_or_else(|| ZiError::validation("filter.equals requires string 'path'"))?;
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
     let equals = obj
         .get("equals")
         .cloned()
         .ok_or_else(|| ZiError::validation("filter.equals requires 'equals' value"))?;
 
-    Ok(Box::new(ZiCFilterEquals::ZiFNew(field_path, equals)))
+    Ok(Box::new(ZiFilterEquals::new(field_path, equals)))
 }
 
 /// Keeps records whose field does not equal a target value.
 #[derive(Debug)]
-pub struct ZiCFilterNotEquals {
-    path: ZiCFieldPath,
+pub struct ZiFilterNotEquals {
+    path: ZiFieldPath,
     equals: Value,
 }
 
-impl ZiCFilterNotEquals {
+impl ZiFilterNotEquals {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, equals: Value) -> Self {
+    pub fn new(path: ZiFieldPath, equals: Value) -> Self {
         Self { path, equals }
     }
 }
 
-impl ZiCOperator for ZiCFilterNotEquals {
+impl ZiOperator for ZiFilterNotEquals {
     fn name(&self) -> &'static str {
         "filter.not_equals"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(value) => value != &self.equals,
                 None => true,
             })
@@ -104,9 +104,9 @@ impl ZiCOperator for ZiCFilterNotEquals {
     }
 }
 
-/// Factory that constructs [`ZiCFilterNotEquals`] from JSON configuration.
+/// Factory that constructs [`ZiFilterNotEquals`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterNotEqualsFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_not_equals_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.not_equals config must be object"))?;
@@ -121,35 +121,35 @@ pub fn ZiFFilterNotEqualsFactory(config: &Value) -> Result<Box<dyn ZiCOperator +
         .cloned()
         .ok_or_else(|| ZiError::validation("filter.not_equals requires 'equals' value"))?;
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterNotEquals::ZiFNew(field_path, equals)))
+    Ok(Box::new(ZiFilterNotEquals::new(field_path, equals)))
 }
 
 /// Keeps records where any configured field equals a target value.
 #[derive(Debug)]
-pub struct ZiCFilterAny {
-    paths: Vec<ZiCFieldPath>,
+pub struct ZiFilterAny {
+    paths: Vec<ZiFieldPath>,
     equals: Value,
 }
 
-impl ZiCFilterAny {
+impl ZiFilterAny {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(paths: Vec<ZiCFieldPath>, equals: Value) -> Self {
+    pub fn new(paths: Vec<ZiFieldPath>, equals: Value) -> Self {
         Self { paths, equals }
     }
 }
 
-impl ZiCOperator for ZiCFilterAny {
+impl ZiOperator for ZiFilterAny {
     fn name(&self) -> &'static str {
         "filter.any"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
             .filter(|record| {
-                self.paths.iter().any(|path| match path.ZiFResolve(record) {
+                self.paths.iter().any(|path| match path.resolve(record) {
                     Some(value) => value == &self.equals,
                     None => false,
                 })
@@ -158,9 +158,9 @@ impl ZiCOperator for ZiCFilterAny {
     }
 }
 
-/// Factory that constructs [`ZiCFilterAny`] from JSON configuration.
+/// Factory that constructs [`ZiFilterAny`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterAnyFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_any_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.any config must be object"))?;
@@ -180,7 +180,7 @@ pub fn ZiFFilterAnyFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send 
             value
                 .as_str()
                 .ok_or_else(|| ZiError::validation("filter.any paths must be strings"))
-                .and_then(ZiCFieldPath::ZiFParse)
+                .and_then(ZiFieldPath::parse)
         })
         .collect::<Result<Vec<_>>>()?;
 
@@ -189,33 +189,33 @@ pub fn ZiFFilterAnyFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send 
         .cloned()
         .ok_or_else(|| ZiError::validation("filter.any requires 'equals' value"))?;
 
-    Ok(Box::new(ZiCFilterAny::ZiFNew(field_paths, equals)))
+    Ok(Box::new(ZiFilterAny::new(field_paths, equals)))
 }
 
 /// Keeps records where a numeric field lies within inclusive bounds.
 #[derive(Debug)]
-pub struct ZiCFilterBetween {
-    path: ZiCFieldPath,
+pub struct ZiFilterBetween {
+    path: ZiFieldPath,
     min: f64,
     max: f64,
 }
 
-impl ZiCFilterBetween {
+impl ZiFilterBetween {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, min: f64, max: f64) -> Self {
+    pub fn new(path: ZiFieldPath, min: f64, max: f64) -> Self {
         Self { path, min, max }
     }
 }
 
-impl ZiCOperator for ZiCFilterBetween {
+impl ZiOperator for ZiFilterBetween {
     fn name(&self) -> &'static str {
         "filter.between"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(Value::Number(number)) => number
                     .as_f64()
                     .map_or(false, |value| value >= self.min && value <= self.max),
@@ -225,9 +225,9 @@ impl ZiCOperator for ZiCFilterBetween {
     }
 }
 
-/// Factory that constructs [`ZiCFilterBetween`] from JSON configuration.
+/// Factory that constructs [`ZiFilterBetween`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterBetweenFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_between_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.between config must be object"))?;
@@ -253,34 +253,34 @@ pub fn ZiFFilterBetweenFactory(config: &Value) -> Result<Box<dyn ZiCOperator + S
         ));
     }
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterBetween::ZiFNew(field_path, min, max)))
+    Ok(Box::new(ZiFilterBetween::new(field_path, min, max)))
 }
 
 /// Keeps records where a numeric field is less than a threshold.
 #[derive(Debug)]
-pub struct ZiCFilterLessThan {
-    path: ZiCFieldPath,
+pub struct ZiFilterLessThan {
+    path: ZiFieldPath,
     threshold: f64,
 }
 
-impl ZiCFilterLessThan {
+impl ZiFilterLessThan {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, threshold: f64) -> Self {
+    pub fn new(path: ZiFieldPath, threshold: f64) -> Self {
         Self { path, threshold }
     }
 }
 
-impl ZiCOperator for ZiCFilterLessThan {
+impl ZiOperator for ZiFilterLessThan {
     fn name(&self) -> &'static str {
         "filter.less_than"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(Value::Number(number)) => number
                     .as_f64()
                     .map_or(false, |value| value < self.threshold),
@@ -290,9 +290,9 @@ impl ZiCOperator for ZiCFilterLessThan {
     }
 }
 
-/// Factory that constructs [`ZiCFilterLessThan`] from JSON configuration.
+/// Factory that constructs [`ZiFilterLessThan`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterLessThanFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_less_than_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.less_than config must be object"))?;
@@ -307,34 +307,34 @@ pub fn ZiFFilterLessThanFactory(config: &Value) -> Result<Box<dyn ZiCOperator + 
         .and_then(Value::as_f64)
         .ok_or_else(|| ZiError::validation("filter.less_than requires numeric 'threshold'"))?;
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterLessThan::ZiFNew(field_path, threshold)))
+    Ok(Box::new(ZiFilterLessThan::new(field_path, threshold)))
 }
 
 /// Keeps records where a numeric field is greater than a threshold.
 #[derive(Debug)]
-pub struct ZiCFilterGreaterThan {
-    path: ZiCFieldPath,
+pub struct ZiFilterGreaterThan {
+    path: ZiFieldPath,
     threshold: f64,
 }
 
-impl ZiCFilterGreaterThan {
+impl ZiFilterGreaterThan {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, threshold: f64) -> Self {
+    pub fn new(path: ZiFieldPath, threshold: f64) -> Self {
         Self { path, threshold }
     }
 }
 
-impl ZiCOperator for ZiCFilterGreaterThan {
+impl ZiOperator for ZiFilterGreaterThan {
     fn name(&self) -> &'static str {
         "filter.greater_than"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(Value::Number(number)) => number
                     .as_f64()
                     .map_or(false, |value| value > self.threshold),
@@ -344,9 +344,9 @@ impl ZiCOperator for ZiCFilterGreaterThan {
     }
 }
 
-/// Factory that constructs [`ZiCFilterGreaterThan`] from JSON configuration.
+/// Factory that constructs [`ZiFilterGreaterThan`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterGreaterThanFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_greater_than_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.greater_than config must be object"))?;
@@ -361,23 +361,23 @@ pub fn ZiFFilterGreaterThanFactory(config: &Value) -> Result<Box<dyn ZiCOperator
         .and_then(Value::as_f64)
         .ok_or_else(|| ZiError::validation("filter.greater_than requires numeric 'threshold'"))?;
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterGreaterThan::ZiFNew(
+    Ok(Box::new(ZiFilterGreaterThan::new(
         field_path, threshold,
     )))
 }
 
 /// Keeps records where a field is explicitly null or missing.
 #[derive(Debug)]
-pub struct ZiCFilterIsNull {
-    path: ZiCFieldPath,
+pub struct ZiFilterIsNull {
+    path: ZiFieldPath,
     include_missing: bool,
 }
 
-impl ZiCFilterIsNull {
+impl ZiFilterIsNull {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, include_missing: bool) -> Self {
+    pub fn new(path: ZiFieldPath, include_missing: bool) -> Self {
         Self {
             path,
             include_missing,
@@ -385,15 +385,15 @@ impl ZiCFilterIsNull {
     }
 }
 
-impl ZiCOperator for ZiCFilterIsNull {
+impl ZiOperator for ZiFilterIsNull {
     fn name(&self) -> &'static str {
         "filter.is_null"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(Value::Null) => true,
                 None => self.include_missing,
                 _ => false,
@@ -402,9 +402,9 @@ impl ZiCOperator for ZiCFilterIsNull {
     }
 }
 
-/// Factory that constructs [`ZiCFilterIsNull`] from JSON configuration.
+/// Factory that constructs [`ZiFilterIsNull`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterIsNullFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_is_null_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.is_null config must be object"))?;
@@ -419,9 +419,9 @@ pub fn ZiFFilterIsNullFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Se
         .and_then(Value::as_bool)
         .unwrap_or(true);
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterIsNull::ZiFNew(
+    Ok(Box::new(ZiFilterIsNull::new(
         field_path,
         include_missing,
     )))
@@ -429,27 +429,27 @@ pub fn ZiFFilterIsNullFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Se
 
 /// Keeps records where a field matches a regular expression.
 #[derive(Debug)]
-pub struct ZiCFilterRegex {
-    path: ZiCFieldPath,
+pub struct ZiFilterRegex {
+    path: ZiFieldPath,
     pattern: Regex,
 }
 
-impl ZiCFilterRegex {
+impl ZiFilterRegex {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, pattern: Regex) -> Self {
+    pub fn new(path: ZiFieldPath, pattern: Regex) -> Self {
         Self { path, pattern }
     }
 }
 
-impl ZiCOperator for ZiCFilterRegex {
+impl ZiOperator for ZiFilterRegex {
     fn name(&self) -> &'static str {
         "filter.regex"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(Value::String(value)) => self.pattern.is_match(value),
                 Some(Value::Array(values)) => values.iter().any(
                     |value| matches!(value, Value::String(item) if self.pattern.is_match(item)),
@@ -460,9 +460,9 @@ impl ZiCOperator for ZiCFilterRegex {
     }
 }
 
-/// Factory that constructs [`ZiCFilterRegex`] from JSON configuration.
+/// Factory that constructs [`ZiFilterRegex`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterRegexFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_regex_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.regex config must be object"))?;
@@ -480,34 +480,34 @@ pub fn ZiFFilterRegexFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Sen
     let regex = Regex::new(pattern)
         .map_err(|err| ZiError::validation(format!("invalid regex pattern: {err}")))?;
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterRegex::ZiFNew(field_path, regex)))
+    Ok(Box::new(ZiFilterRegex::new(field_path, regex)))
 }
 
 /// Keeps records where a field ends with a suffix.
 #[derive(Debug)]
-pub struct ZiCFilterEndsWith {
-    path: ZiCFieldPath,
+pub struct ZiFilterEndsWith {
+    path: ZiFieldPath,
     suffix: String,
 }
 
-impl ZiCFilterEndsWith {
+impl ZiFilterEndsWith {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, suffix: String) -> Self {
+    pub fn new(path: ZiFieldPath, suffix: String) -> Self {
         Self { path, suffix }
     }
 }
 
-impl ZiCOperator for ZiCFilterEndsWith {
+impl ZiOperator for ZiFilterEndsWith {
     fn name(&self) -> &'static str {
         "filter.ends_with"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(Value::String(value)) => value.ends_with(&self.suffix),
                 Some(Value::Array(values)) => values.iter().any(
                     |value| matches!(value, Value::String(item) if item.ends_with(&self.suffix)),
@@ -518,9 +518,9 @@ impl ZiCOperator for ZiCFilterEndsWith {
     }
 }
 
-/// Factory that constructs [`ZiCFilterEndsWith`] from JSON configuration.
+/// Factory that constructs [`ZiFilterEndsWith`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterEndsWithFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_ends_with_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.ends_with config must be object"))?;
@@ -536,34 +536,34 @@ pub fn ZiFFilterEndsWithFactory(config: &Value) -> Result<Box<dyn ZiCOperator + 
         .ok_or_else(|| ZiError::validation("filter.ends_with requires string 'suffix'"))?
         .to_string();
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterEndsWith::ZiFNew(field_path, suffix)))
+    Ok(Box::new(ZiFilterEndsWith::new(field_path, suffix)))
 }
 
 /// Keeps records where a field starts with a prefix.
 #[derive(Debug)]
-pub struct ZiCFilterStartsWith {
-    path: ZiCFieldPath,
+pub struct ZiFilterStartsWith {
+    path: ZiFieldPath,
     prefix: String,
 }
 
-impl ZiCFilterStartsWith {
+impl ZiFilterStartsWith {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, prefix: String) -> Self {
+    pub fn new(path: ZiFieldPath, prefix: String) -> Self {
         Self { path, prefix }
     }
 }
 
-impl ZiCOperator for ZiCFilterStartsWith {
+impl ZiOperator for ZiFilterStartsWith {
     fn name(&self) -> &'static str {
         "filter.starts_with"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(Value::String(value)) => value.starts_with(&self.prefix),
                 Some(Value::Array(values)) => values.iter().any(
                     |value| matches!(value, Value::String(item) if item.starts_with(&self.prefix)),
@@ -574,9 +574,9 @@ impl ZiCOperator for ZiCFilterStartsWith {
     }
 }
 
-/// Factory that constructs [`ZiCFilterStartsWith`] from JSON configuration.
+/// Factory that constructs [`ZiFilterStartsWith`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterStartsWithFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_starts_with_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.starts_with config must be object"))?;
@@ -592,35 +592,35 @@ pub fn ZiFFilterStartsWithFactory(config: &Value) -> Result<Box<dyn ZiCOperator 
         .ok_or_else(|| ZiError::validation("filter.starts_with requires string 'prefix'"))?
         .to_string();
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterStartsWith::ZiFNew(field_path, prefix)))
+    Ok(Box::new(ZiFilterStartsWith::new(field_path, prefix)))
 }
 
 /// Keeps records where a numeric field falls within an optional range.
 #[derive(Debug)]
-pub struct ZiCFilterRange {
-    path: ZiCFieldPath,
+pub struct ZiFilterRange {
+    path: ZiFieldPath,
     min: Option<f64>,
     max: Option<f64>,
 }
 
-impl ZiCFilterRange {
+impl ZiFilterRange {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, min: Option<f64>, max: Option<f64>) -> Self {
+    pub fn new(path: ZiFieldPath, min: Option<f64>, max: Option<f64>) -> Self {
         Self { path, min, max }
     }
 }
 
-impl ZiCOperator for ZiCFilterRange {
+impl ZiOperator for ZiFilterRange {
     fn name(&self) -> &'static str {
         "filter.range"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(Value::Number(number)) => number.as_f64().map_or(false, |value| {
                     if let Some(min) = self.min {
                         if value < min {
@@ -640,9 +640,9 @@ impl ZiCOperator for ZiCFilterRange {
     }
 }
 
-/// Factory that constructs [`ZiCFilterRange`] from JSON configuration.
+/// Factory that constructs [`ZiFilterRange`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterRangeFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_range_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.range config must be object"))?;
@@ -669,34 +669,34 @@ pub fn ZiFFilterRangeFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Sen
         }
     }
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterRange::ZiFNew(field_path, min, max)))
+    Ok(Box::new(ZiFilterRange::new(field_path, min, max)))
 }
 
 /// Keeps records where a field equals any configured value.
 #[derive(Debug)]
-pub struct ZiCFilterIn {
-    path: ZiCFieldPath,
+pub struct ZiFilterIn {
+    path: ZiFieldPath,
     allowed: Vec<Value>,
 }
 
-impl ZiCFilterIn {
+impl ZiFilterIn {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, allowed: Vec<Value>) -> Self {
+    pub fn new(path: ZiFieldPath, allowed: Vec<Value>) -> Self {
         Self { path, allowed }
     }
 }
 
-impl ZiCOperator for ZiCFilterIn {
+impl ZiOperator for ZiFilterIn {
     fn name(&self) -> &'static str {
         "filter.in"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(value) => self.allowed.iter().any(|allowed| allowed == value),
                 None => false,
             })
@@ -706,27 +706,27 @@ impl ZiCOperator for ZiCFilterIn {
 
 /// Keeps records where a field does **not** equal any configured value.
 #[derive(Debug)]
-pub struct ZiCFilterNotIn {
-    path: ZiCFieldPath,
+pub struct ZiFilterNotIn {
+    path: ZiFieldPath,
     disallowed: Vec<Value>,
 }
 
-impl ZiCFilterNotIn {
+impl ZiFilterNotIn {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, disallowed: Vec<Value>) -> Self {
+    pub fn new(path: ZiFieldPath, disallowed: Vec<Value>) -> Self {
         Self { path, disallowed }
     }
 }
 
-impl ZiCOperator for ZiCFilterNotIn {
+impl ZiOperator for ZiFilterNotIn {
     fn name(&self) -> &'static str {
         "filter.not_in"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(value) => !self.disallowed.iter().any(|blocked| blocked == value),
                 None => true,
             })
@@ -734,9 +734,9 @@ impl ZiCOperator for ZiCFilterNotIn {
     }
 }
 
-/// Factory that constructs [`ZiCFilterIn`] from JSON configuration.
+/// Factory that constructs [`ZiFilterIn`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterInFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_in_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.in config must be object"))?;
@@ -756,14 +756,14 @@ pub fn ZiFFilterInFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send +
     }
 
     let allowed = values.to_vec();
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterIn::ZiFNew(field_path, allowed)))
+    Ok(Box::new(ZiFilterIn::new(field_path, allowed)))
 }
 
-/// Factory that constructs [`ZiCFilterNotIn`] from JSON configuration.
+/// Factory that constructs [`ZiFilterNotIn`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterNotInFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_not_in_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.not_in config must be object"))?;
@@ -785,34 +785,34 @@ pub fn ZiFFilterNotInFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Sen
     }
 
     let disallowed = values.to_vec();
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterNotIn::ZiFNew(field_path, disallowed)))
+    Ok(Box::new(ZiFilterNotIn::new(field_path, disallowed)))
 }
 
 /// Keeps records where a field exists and is not null.
 #[derive(Debug)]
-pub struct ZiCFilterExists {
-    path: ZiCFieldPath,
+pub struct ZiFilterExists {
+    path: ZiFieldPath,
 }
 
-impl ZiCFilterExists {
+impl ZiFilterExists {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath) -> Self {
+    pub fn new(path: ZiFieldPath) -> Self {
         Self { path }
     }
 }
 
-impl ZiCOperator for ZiCFilterExists {
+impl ZiOperator for ZiFilterExists {
     fn name(&self) -> &'static str {
         "filter.exists"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
             .filter(
-                |record| matches!(self.path.ZiFResolve(record), Some(value) if !value.is_null()),
+                |record| matches!(self.path.resolve(record), Some(value) if !value.is_null()),
             )
             .collect())
     }
@@ -820,16 +820,16 @@ impl ZiCOperator for ZiCFilterExists {
 
 /// Keeps records where a field contains a target substring.
 #[derive(Debug)]
-pub struct ZiCFilterContains {
-    path: ZiCFieldPath,
+pub struct ZiFilterContains {
+    path: ZiFieldPath,
     needle: String,
     needle_lower: String,
     case_insensitive: bool,
 }
 
-impl ZiCFilterContains {
+impl ZiFilterContains {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, needle: String, case_insensitive: bool) -> Self {
+    pub fn new(path: ZiFieldPath, needle: String, case_insensitive: bool) -> Self {
         let needle_lower = if case_insensitive {
             needle.to_lowercase()
         } else {
@@ -853,15 +853,15 @@ impl ZiCFilterContains {
     }
 }
 
-impl ZiCOperator for ZiCFilterContains {
+impl ZiOperator for ZiFilterContains {
     fn name(&self) -> &'static str {
         "filter.contains"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(Value::String(value)) => self.matches(value),
                 Some(Value::Array(values)) => values
                     .iter()
@@ -872,9 +872,9 @@ impl ZiCOperator for ZiCFilterContains {
     }
 }
 
-/// Factory that constructs [`ZiCFilterContains`] from JSON configuration.
+/// Factory that constructs [`ZiFilterContains`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterContainsFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_contains_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.contains config must be object"))?;
@@ -894,9 +894,9 @@ pub fn ZiFFilterContainsFactory(config: &Value) -> Result<Box<dyn ZiCOperator + 
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterContains::ZiFNew(
+    Ok(Box::new(ZiFilterContains::new(
         field_path,
         needle,
         case_insensitive,
@@ -905,16 +905,16 @@ pub fn ZiFFilterContainsFactory(config: &Value) -> Result<Box<dyn ZiCOperator + 
 
 /// Keeps records where a field contains all configured substrings.
 #[derive(Debug)]
-pub struct ZiCFilterContainsAll {
-    path: ZiCFieldPath,
+pub struct ZiFilterContainsAll {
+    path: ZiFieldPath,
     needles: Vec<String>,
     needles_lower: Vec<String>,
     case_insensitive: bool,
 }
 
-impl ZiCFilterContainsAll {
+impl ZiFilterContainsAll {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, needles: Vec<String>, case_insensitive: bool) -> Self {
+    pub fn new(path: ZiFieldPath, needles: Vec<String>, case_insensitive: bool) -> Self {
         let needles_lower = if case_insensitive {
             needles.iter().map(|needle| needle.to_lowercase()).collect()
         } else {
@@ -958,15 +958,15 @@ impl ZiCFilterContainsAll {
     }
 }
 
-impl ZiCOperator for ZiCFilterContainsAll {
+impl ZiOperator for ZiFilterContainsAll {
     fn name(&self) -> &'static str {
         "filter.contains_all"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(Value::String(value)) => self.string_contains_all(value),
                 Some(Value::Array(values)) => self.array_contains_all(values),
                 _ => false,
@@ -975,9 +975,9 @@ impl ZiCOperator for ZiCFilterContainsAll {
     }
 }
 
-/// Factory that constructs [`ZiCFilterContainsAll`] from JSON configuration.
+/// Factory that constructs [`ZiFilterContainsAll`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterContainsAllFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_contains_all_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.contains_all config must be object"))?;
@@ -1012,9 +1012,9 @@ pub fn ZiFFilterContainsAllFactory(config: &Value) -> Result<Box<dyn ZiCOperator
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterContainsAll::ZiFNew(
+    Ok(Box::new(ZiFilterContainsAll::new(
         field_path,
         substrings,
         case_insensitive,
@@ -1023,16 +1023,16 @@ pub fn ZiFFilterContainsAllFactory(config: &Value) -> Result<Box<dyn ZiCOperator
 
 /// Keeps records where a field contains any of multiple substrings.
 #[derive(Debug)]
-pub struct ZiCFilterContainsAny {
-    path: ZiCFieldPath,
+pub struct ZiFilterContainsAny {
+    path: ZiFieldPath,
     needles: Vec<String>,
     needles_lower: Vec<String>,
     case_insensitive: bool,
 }
 
-impl ZiCFilterContainsAny {
+impl ZiFilterContainsAny {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, needles: Vec<String>, case_insensitive: bool) -> Self {
+    pub fn new(path: ZiFieldPath, needles: Vec<String>, case_insensitive: bool) -> Self {
         let needles_lower = if case_insensitive {
             needles.iter().map(|needle| needle.to_lowercase()).collect()
         } else {
@@ -1080,15 +1080,15 @@ impl ZiCFilterContainsAny {
     }
 }
 
-impl ZiCOperator for ZiCFilterContainsAny {
+impl ZiOperator for ZiFilterContainsAny {
     fn name(&self) -> &'static str {
         "filter.contains_any"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(Value::String(value)) => self.string_contains_any(value),
                 Some(Value::Array(values)) => self.array_contains_any(values),
                 _ => false,
@@ -1097,9 +1097,9 @@ impl ZiCOperator for ZiCFilterContainsAny {
     }
 }
 
-/// Factory that constructs [`ZiCFilterContainsAny`] from JSON configuration.
+/// Factory that constructs [`ZiFilterContainsAny`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterContainsAnyFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_contains_any_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.contains_any config must be object"))?;
@@ -1134,9 +1134,9 @@ pub fn ZiFFilterContainsAnyFactory(config: &Value) -> Result<Box<dyn ZiCOperator
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterContainsAny::ZiFNew(
+    Ok(Box::new(ZiFilterContainsAny::new(
         field_path,
         values,
         case_insensitive,
@@ -1145,16 +1145,16 @@ pub fn ZiFFilterContainsAnyFactory(config: &Value) -> Result<Box<dyn ZiCOperator
 
 /// Keeps records where a field contains none of the configured substrings.
 #[derive(Debug)]
-pub struct ZiCFilterContainsNone {
-    path: ZiCFieldPath,
+pub struct ZiFilterContainsNone {
+    path: ZiFieldPath,
     needles: Vec<String>,
     needles_lower: Vec<String>,
     case_insensitive: bool,
 }
 
-impl ZiCFilterContainsNone {
+impl ZiFilterContainsNone {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, needles: Vec<String>, case_insensitive: bool) -> Self {
+    pub fn new(path: ZiFieldPath, needles: Vec<String>, case_insensitive: bool) -> Self {
         let needles_lower = if case_insensitive {
             needles.iter().map(|needle| needle.to_lowercase()).collect()
         } else {
@@ -1188,15 +1188,15 @@ impl ZiCFilterContainsNone {
     }
 }
 
-impl ZiCOperator for ZiCFilterContainsNone {
+impl ZiOperator for ZiFilterContainsNone {
     fn name(&self) -> &'static str {
         "filter.contains_none"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(Value::String(value)) => !self.string_contains_any(value),
                 Some(Value::Array(values)) => !self.array_contains_any(values),
                 Some(Value::Null) | None => true,
@@ -1206,9 +1206,9 @@ impl ZiCOperator for ZiCFilterContainsNone {
     }
 }
 
-/// Factory that constructs [`ZiCFilterContainsNone`] from JSON configuration.
+/// Factory that constructs [`ZiFilterContainsNone`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterContainsNoneFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_contains_none_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.contains_none config must be object"))?;
@@ -1245,9 +1245,9 @@ pub fn ZiFFilterContainsNoneFactory(config: &Value) -> Result<Box<dyn ZiCOperato
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterContainsNone::ZiFNew(
+    Ok(Box::new(ZiFilterContainsNone::new(
         field_path,
         substrings,
         case_insensitive,
@@ -1256,27 +1256,27 @@ pub fn ZiFFilterContainsNoneFactory(config: &Value) -> Result<Box<dyn ZiCOperato
 
 /// Keeps records when an array field contains a target value.
 #[derive(Debug)]
-pub struct ZiCFilterArrayContains {
-    path: ZiCFieldPath,
+pub struct ZiFilterArrayContains {
+    path: ZiFieldPath,
     element: Value,
 }
 
-impl ZiCFilterArrayContains {
+impl ZiFilterArrayContains {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, element: Value) -> Self {
+    pub fn new(path: ZiFieldPath, element: Value) -> Self {
         Self { path, element }
     }
 }
 
-impl ZiCOperator for ZiCFilterArrayContains {
+impl ZiOperator for ZiFilterArrayContains {
     fn name(&self) -> &'static str {
         "filter.array_contains"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(Value::Array(values)) => values.iter().any(|value| value == &self.element),
                 None => true,
                 _ => false,
@@ -1285,9 +1285,9 @@ impl ZiCOperator for ZiCFilterArrayContains {
     }
 }
 
-/// Factory that constructs [`ZiCFilterArrayContains`] from JSON configuration.
+/// Factory that constructs [`ZiFilterArrayContains`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterArrayContainsFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_array_contains_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.array_contains config must be object"))?;
@@ -1302,16 +1302,16 @@ pub fn ZiFFilterArrayContainsFactory(config: &Value) -> Result<Box<dyn ZiCOperat
         .cloned()
         .ok_or_else(|| ZiError::validation("filter.array_contains requires 'element' value"))?;
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterArrayContains::ZiFNew(
+    Ok(Box::new(ZiFilterArrayContains::new(
         field_path, element,
     )))
 }
 
-/// Factory that constructs [`ZiCFilterExists`] from JSON configuration.
+/// Factory that constructs [`ZiFilterExists`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterExistsFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_exists_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.exists config must be object"))?;
@@ -1321,33 +1321,33 @@ pub fn ZiFFilterExistsFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Se
         .and_then(Value::as_str)
         .ok_or_else(|| ZiError::validation("filter.exists requires string 'path'"))?;
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterExists::ZiFNew(field_path)))
+    Ok(Box::new(ZiFilterExists::new(field_path)))
 }
 
 /// Keeps records where a field is missing or null.
 #[derive(Debug)]
-pub struct ZiCFilterNotExists {
-    path: ZiCFieldPath,
+pub struct ZiFilterNotExists {
+    path: ZiFieldPath,
 }
 
-impl ZiCFilterNotExists {
+impl ZiFilterNotExists {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath) -> Self {
+    pub fn new(path: ZiFieldPath) -> Self {
         Self { path }
     }
 }
 
-impl ZiCOperator for ZiCFilterNotExists {
+impl ZiOperator for ZiFilterNotExists {
     fn name(&self) -> &'static str {
         "filter.not_exists"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(value) => value.is_null(),
                 None => true,
             })
@@ -1355,9 +1355,9 @@ impl ZiCOperator for ZiCFilterNotExists {
     }
 }
 
-/// Factory that constructs [`ZiCFilterNotExists`] from JSON configuration.
+/// Factory that constructs [`ZiFilterNotExists`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterNotExistsFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_not_exists_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.not_exists config must be object"))?;
@@ -1367,20 +1367,20 @@ pub fn ZiFFilterNotExistsFactory(config: &Value) -> Result<Box<dyn ZiCOperator +
         .and_then(Value::as_str)
         .ok_or_else(|| ZiError::validation("filter.not_exists requires string 'path'"))?;
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterNotExists::ZiFNew(field_path)))
+    Ok(Box::new(ZiFilterNotExists::new(field_path)))
 }
 
 /// Dot-delimited path referencing either payload or metadata values.
 #[derive(Clone, Debug)]
-pub struct ZiCFieldPath {
+pub struct ZiFieldPath {
     segments: Vec<String>,
 }
 
-impl ZiCFieldPath {
+impl ZiFieldPath {
     #[allow(non_snake_case)]
-    pub fn ZiFParse(path: &str) -> Result<Self> {
+    pub fn parse(path: &str) -> Result<Self> {
         let segments: Vec<String> = path
             .split('.')
             .map(|segment| segment.trim().to_string())
@@ -1408,7 +1408,7 @@ impl ZiCFieldPath {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFResolve<'a>(&self, record: &'a ZiCRecord) -> Option<&'a Value> {
+    pub fn resolve<'a>(&self, record: &'a ZiRecord) -> Option<&'a Value> {
         let mut segments = self.segments.iter();
         match segments.next()?.as_str() {
             "payload" => {
@@ -1437,7 +1437,7 @@ impl ZiCFieldPath {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFSetValue(&self, record: &mut ZiCRecord, value: Value) -> bool {
+    pub fn set_value(&self, record: &mut ZiRecord, value: Value) -> bool {
         let segments: Vec<String> = self.segments.clone();
         match segments.first().map(|s| s.as_str()) {
             Some("payload") => {
@@ -1466,7 +1466,7 @@ impl ZiCFieldPath {
                 }
             }
             Some("metadata") => {
-                let metadata = record.ZiFMetadataMut();
+                let metadata = record.metadata_mut();
                 let mut current = metadata;
                 for seg in &segments[1..segments.len().saturating_sub(1)] {
                     if !current.contains_key(seg) {
@@ -1492,28 +1492,28 @@ impl ZiCFieldPath {
 
 /// Keeps string fields whose character length falls within optional bounds.
 #[derive(Debug)]
-pub struct ZiCFilterLengthRange {
-    path: ZiCFieldPath,
+pub struct ZiFilterLengthRange {
+    path: ZiFieldPath,
     min: Option<usize>,
     max: Option<usize>,
 }
 
-impl ZiCFilterLengthRange {
+impl ZiFilterLengthRange {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, min: Option<usize>, max: Option<usize>) -> Self {
+    pub fn new(path: ZiFieldPath, min: Option<usize>, max: Option<usize>) -> Self {
         Self { path, min, max }
     }
 }
 
-impl ZiCOperator for ZiCFilterLengthRange {
+impl ZiOperator for ZiFilterLengthRange {
     fn name(&self) -> &'static str {
         "filter.length_range"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(Value::String(s)) => {
                     let len = s.chars().count();
                     if let Some(min) = self.min {
@@ -1534,9 +1534,9 @@ impl ZiCOperator for ZiCFilterLengthRange {
     }
 }
 
-/// Factory that constructs [`ZiCFilterLengthRange`] from JSON configuration.
+/// Factory that constructs [`ZiFilterLengthRange`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterLengthRangeFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_length_range_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.length_range config must be object"))?;
@@ -1561,35 +1561,35 @@ pub fn ZiFFilterLengthRangeFactory(config: &Value) -> Result<Box<dyn ZiCOperator
         ));
     }
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterLengthRange::ZiFNew(field_path, min, max)))
+    Ok(Box::new(ZiFilterLengthRange::new(field_path, min, max)))
 }
 
 /// Keeps string fields whose whitespace token counts fall within optional bounds.
 #[derive(Debug)]
-pub struct ZiCFilterTokenRange {
-    path: ZiCFieldPath,
+pub struct ZiFilterTokenRange {
+    path: ZiFieldPath,
     min: Option<usize>,
     max: Option<usize>,
 }
 
-impl ZiCFilterTokenRange {
+impl ZiFilterTokenRange {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, min: Option<usize>, max: Option<usize>) -> Self {
+    pub fn new(path: ZiFieldPath, min: Option<usize>, max: Option<usize>) -> Self {
         Self { path, min, max }
     }
 }
 
-impl ZiCOperator for ZiCFilterTokenRange {
+impl ZiOperator for ZiFilterTokenRange {
     fn name(&self) -> &'static str {
         "filter.token_range"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
-            .filter(|record| match self.path.ZiFResolve(record) {
+            .filter(|record| match self.path.resolve(record) {
                 Some(Value::String(s)) => {
                     let len = s.split_whitespace().count();
                     if let Some(min) = self.min {
@@ -1610,9 +1610,9 @@ impl ZiCOperator for ZiCFilterTokenRange {
     }
 }
 
-/// Factory that constructs [`ZiCFilterTokenRange`] from JSON configuration.
+/// Factory that constructs [`ZiFilterTokenRange`] from JSON configuration.
 #[allow(non_snake_case)]
-pub fn ZiFFilterTokenRangeFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn filter_token_range_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("filter.token_range config must be object"))?;
@@ -1637,7 +1637,7 @@ pub fn ZiFFilterTokenRangeFactory(config: &Value) -> Result<Box<dyn ZiCOperator 
         ));
     }
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
+    let field_path = ZiFieldPath::parse(path)?;
 
-    Ok(Box::new(ZiCFilterTokenRange::ZiFNew(field_path, min, max)))
+    Ok(Box::new(ZiFilterTokenRange::new(field_path, min, max)))
 }

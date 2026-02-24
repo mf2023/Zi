@@ -15,21 +15,38 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # ZiOrbit Runtime Module
+//!
+//! This module provides the plugin runtime system for Zi, enabling dynamic
+//! loading and execution of operator plugins at runtime.
+//!
+//! ## Core Concepts
+//!
+//! - **ZiOrbit**: Main runtime context for plugin execution
+//! - **ZiInProcessOrbit**: In-process plugin execution environment
+//! - **ZiExecutionContext**: Mutable context passed to plugins during execution
+//! - **ZiPluginDescriptor**: Metadata describing a loaded plugin
+//!
+//! ## Plugin System
+//!
+//! Plugins can export operators, capabilities, and hooks into the runtime.
+//! The runtime manages plugin lifecycle, symbol resolution, and execution.
+
 use std::collections::HashMap;
 use std::path::Path;
 
 use serde_json::Value;
 
-use crate::orbit::operator_registry::{ZiCOperatorRegistry, ZiFOperatorFactory};
+use crate::orbit::operator_registry::{ZiOperatorRegistry, OperatorFactory};
 use crate::orbit::plugin_package;
 use crate::errors::{Result, ZiError};
-use crate::metrics::ZiCQualityMetrics;
-use crate::record::{ZiCRecord, ZiCRecordBatch};
-use crate::version::ZiCVersionStore;
+use crate::metrics::ZiQualityMetrics;
+use crate::record::{ZiRecord, ZiRecordBatch};
+use crate::version::ZiVersionStore;
 
 /// Kinds of symbols a plugin may export into the ZiOrbit runtime.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ZiCPluginExportKind {
+pub enum ZiPluginExportKind {
     Operator,
     Capability,
     Hook,
@@ -43,7 +60,7 @@ pub enum ZiCPluginExportKind {
 ///   "message": "human readable message",
 ///   "fields": { ... arbitrary JSON ... }
 /// }
-fn _orbit_log_event_capability(args: &Value, _ctx: &mut ZiCExecutionContext) -> Result<Value> {
+fn _orbit_log_event_capability(args: &Value, _ctx: &mut ZiExecutionContext) -> Result<Value> {
     let obj = args
         .as_object()
         .ok_or_else(|| ZiError::internal("log.event args must be an object"))?;
@@ -77,10 +94,10 @@ fn _orbit_log_event_capability(args: &Value, _ctx: &mut ZiCExecutionContext) -> 
 /// Create a masked view of the given batch by stripping obviously sensitive
 /// metadata fields. This is a conservative first step which can be extended in
 /// the future once we have more structured sensitivity annotations.
-fn _mask_sensitive_view(batch: ZiCRecordBatch) -> ZiCRecordBatch {
+fn _mask_sensitive_view(batch: ZiRecordBatch) -> ZiRecordBatch {
     batch
         .into_iter()
-        .map(|mut rec: ZiCRecord| {
+        .map(|mut rec: ZiRecord| {
             if let Some(meta) = rec.metadata.as_mut() {
                 // Drop common PII-related metadata keys if present.
                 meta.remove("pii");
@@ -94,8 +111,8 @@ fn _mask_sensitive_view(batch: ZiCRecordBatch) -> ZiCRecordBatch {
 
 /// A single exported symbol from a plugin: an operator, capability, or hook.
 #[derive(Clone, Debug)]
-pub struct ZiCPluginExport {
-    pub kind: ZiCPluginExportKind,
+pub struct ZiPluginExport {
+    pub kind: ZiPluginExportKind,
     pub name: String,
     /// Optional script path associated with this export (typically for
     /// operator implementations backed by a DSL or scripting language).
@@ -104,7 +121,7 @@ pub struct ZiCPluginExport {
 
 /// Sandbox configuration for a plugin.
 #[derive(Clone, Debug, Default)]
-pub struct ZiCSandboxConfig {
+pub struct ZiSandboxConfig {
     /// Maximum CPU usage allowed for the plugin (in percent).
     pub max_cpu_percent: Option<u8>,
     /// Maximum memory usage allowed for the plugin (in MB).
@@ -131,32 +148,32 @@ pub struct ZiCSandboxConfig {
 
 /// Simple policy describing what a plugin is allowed to do inside ZiOrbit.
 #[derive(Clone, Debug, Default)]
-pub struct ZiCPluginPolicy {
+pub struct ZiPluginPolicy {
     /// Names of capabilities this plugin is allowed to call.
     pub allowed_capabilities: Vec<String>,
     /// Whether the plugin may access the version store.
     pub can_access_versions: bool,
     /// Default data visibility policy applied when creating an execution
     /// context for this plugin.
-    pub default_visibility: ZiCDataVisibility,
+    pub default_visibility: ZiDataVisibility,
     /// Plugin role, used for role-based access control.
     pub role: Option<String>,
     /// Sandbox configuration for the plugin.
-    pub sandbox: ZiCSandboxConfig,
+    pub sandbox: ZiSandboxConfig,
 }
 
 /// Plugin version information
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ZiCPluginVersion {
+pub struct ZiPluginVersion {
     pub major: u32,
     pub minor: u32,
     pub patch: u32,
     pub pre_release: Option<String>,
 }
 
-impl ZiCPluginVersion {
+impl ZiPluginVersion {
     pub fn new(major: u32, minor: u32, patch: u32) -> Self {
-        ZiCPluginVersion {
+        ZiPluginVersion {
             major,
             minor,
             patch,
@@ -187,7 +204,7 @@ impl ZiCPluginVersion {
             (patch, None)
         };
 
-        Ok(ZiCPluginVersion {
+        Ok(ZiPluginVersion {
             major,
             minor,
             patch,
@@ -205,16 +222,16 @@ impl ZiCPluginVersion {
 
 /// Plugin dependency specification
 #[derive(Clone, Debug)]
-pub struct ZiCPluginDependency {
+pub struct ZiPluginDependency {
     pub plugin_id: String,
-    pub min_version: Option<ZiCPluginVersion>,
-    pub max_version: Option<ZiCPluginVersion>,
+    pub min_version: Option<ZiPluginVersion>,
+    pub max_version: Option<ZiPluginVersion>,
     pub required: bool,
 }
 
 /// Plugin lifecycle state
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ZiCPluginState {
+pub enum ZiPluginState {
     Loaded,
     Active,
     Inactive,
@@ -224,28 +241,28 @@ pub enum ZiCPluginState {
 
 /// High-level description of a loaded plugin inside ZiOrbit.
 #[derive(Clone, Debug)]
-pub struct ZiCPluginDescriptor {
+pub struct ZiPluginDescriptor {
     pub id: String,
-    pub version: ZiCPluginVersion,
-    pub exports: Vec<ZiCPluginExport>,
-    pub policy: ZiCPluginPolicy,
-    pub dependencies: Vec<ZiCPluginDependency>,
-    pub state: ZiCPluginState,
+    pub version: ZiPluginVersion,
+    pub exports: Vec<ZiPluginExport>,
+    pub policy: ZiPluginPolicy,
+    pub dependencies: Vec<ZiPluginDependency>,
+    pub state: ZiPluginState,
     pub load_time: std::time::SystemTime,
 }
 
 /// Controls how much of the underlying data a plugin may see.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ZiCDataVisibility {
+pub enum ZiDataVisibility {
     /// Full access to records and metadata.
     Full,
     /// Sensitive content may be masked or removed before being exposed.
     MaskSensitive,
 }
 
-impl Default for ZiCDataVisibility {
+impl Default for ZiDataVisibility {
     fn default() -> Self {
-        ZiCDataVisibility::MaskSensitive
+        ZiDataVisibility::MaskSensitive
     }
 }
 
@@ -254,59 +271,59 @@ impl Default for ZiCDataVisibility {
 /// This gives controlled access to metrics, versions, and registered
 /// capabilities without exposing the full host environment.
 #[derive(Debug)]
-pub struct ZiCExecutionContext<'a> {
-    pub metrics: &'a mut ZiCQualityMetrics,
-    pub version_store: Option<&'a mut ZiCVersionStore>,
+pub struct ZiExecutionContext<'a> {
+    pub metrics: &'a mut ZiQualityMetrics,
+    pub version_store: Option<&'a mut ZiVersionStore>,
     /// Registry of host capabilities exposed to plugins.
-    pub capabilities: &'a ZiCCapabilityRegistry,
+    pub capabilities: &'a ZiCapabilityRegistry,
     /// Visibility policy for data exposed to the current plugin.
-    pub visibility: ZiCDataVisibility,
+    pub visibility: ZiDataVisibility,
     /// Plugin ID associated with this execution context
     pub plugin_id: String,
     /// Sandbox configuration for the plugin
-    pub sandbox: &'a ZiCSandboxConfig,
+    pub sandbox: &'a ZiSandboxConfig,
 }
 
 /// Type alias for a host capability implementation.
-pub type ZiFCapabilityFn = fn(&Value, &mut ZiCExecutionContext) -> Result<Value>;
+pub type CapabilityFn = fn(&Value, &mut ZiExecutionContext) -> Result<Value>;
 
 /// Type alias for a script-backed operator implementation. The runtime is
 /// responsible for interpreting the script at `script_path` and applying it to
 /// the provided batch under the given configuration and execution context.
-pub type ZiFScriptOperatorFn = fn(
+pub type ScriptOperatorFn = fn(
     plugin_id: &str,
     operator_name: &str,
     script_path: &str,
-    batch: ZiCRecordBatch,
+    batch: ZiRecordBatch,
     config: &Value,
-    ctx: &mut ZiCExecutionContext,
-) -> Result<ZiCRecordBatch>;
+    ctx: &mut ZiExecutionContext,
+) -> Result<ZiRecordBatch>;
 
 /// Registry holding all capabilities that ZiOrbit exposes to plugins.
 #[derive(Clone, Debug, Default)]
-pub struct ZiCCapabilityRegistry {
-    inner: HashMap<String, ZiFCapabilityFn>,
+pub struct ZiCapabilityRegistry {
+    inner: HashMap<String, CapabilityFn>,
 }
 
-impl ZiCCapabilityRegistry {
+impl ZiCapabilityRegistry {
     #[allow(non_snake_case)]
-    pub fn ZiFNew() -> Self {
-        ZiCCapabilityRegistry {
+    pub fn new() -> Self {
+        ZiCapabilityRegistry {
             inner: HashMap::new(),
         }
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFRegister(&mut self, name: &str, f: ZiFCapabilityFn) {
+    pub fn register(&mut self, name: &str, f: CapabilityFn) {
         self.inner.insert(name.to_string(), f);
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFCall(
+    pub fn call(
         &self,
         name: &str,
         args: &Value,
-        ctx: &mut ZiCExecutionContext,
+        ctx: &mut ZiExecutionContext,
     ) -> Result<Value> {
         let func = self
             .inner
@@ -320,61 +337,61 @@ impl ZiCCapabilityRegistry {
 ///
 /// Different runtime backends (in-process, script-based, remote, etc.) can
 /// implement this trait to support loading plugins and invoking their exports.
-pub trait ZiCOrbit {
+pub trait ZiOrbit {
     /// Load a plugin from a filesystem path and return its descriptor.
-    fn ZiFLoadPluginFromPath(&mut self, path: &Path) -> crate::errors::Result<ZiCPluginDescriptor>;
+    fn load_plugin_from_path(&mut self, path: &Path) -> crate::errors::Result<ZiPluginDescriptor>;
 
     /// Unload a plugin from the runtime.
-    fn ZiFUnloadPlugin(&mut self, plugin_id: &str) -> crate::errors::Result<()>;
+    fn unload_plugin(&mut self, plugin_id: &str) -> crate::errors::Result<()>;
 
     /// Get information about loaded plugins.
-    fn ZiFGetLoadedPlugins(&self) -> Vec<&ZiCPluginDescriptor>;
+    fn get_loaded_plugins(&self) -> Vec<&ZiPluginDescriptor>;
 
     /// Check if a plugin is loaded.
-    fn ZiFIsPluginLoaded(&self, plugin_id: &str) -> bool;
+    fn is_plugin_loaded(&self, plugin_id: &str) -> bool;
 
     /// Upgrade a plugin to a new version.
-    fn ZiFUpgradePlugin(&mut self, plugin_id: &str, new_path: &Path) -> crate::errors::Result<()>;
+    fn upgrade_plugin(&mut self, plugin_id: &str, new_path: &Path) -> crate::errors::Result<()>;
 
     /// Invoke an operator exported by a plugin.
-    fn ZiFCallOperator(
+    fn call_operator(
         &self,
         plugin_id: &str,
         operator_name: &str,
-        batch: ZiCRecordBatch,
+        batch: ZiRecordBatch,
         config: &Value,
-        ctx: &mut ZiCExecutionContext,
-    ) -> crate::errors::Result<ZiCRecordBatch>;
+        ctx: &mut ZiExecutionContext,
+    ) -> crate::errors::Result<ZiRecordBatch>;
 
     /// Invoke a capability exported by a plugin and return an arbitrary value.
-    fn ZiFCallCapability(
+    fn call_capability(
         &mut self,
         plugin_id: &str,
         capability_name: &str,
         args: &Value,
-        ctx: &mut ZiCExecutionContext,
+        ctx: &mut ZiExecutionContext,
     ) -> crate::errors::Result<Value>;
 }
 
 /// Plugin lifecycle manager responsible for dependency resolution and version management
 #[derive(Debug, Default)]
-pub struct ZiCPluginLifecycleManager {
+pub struct ZiPluginLifecycleManager {
     /// Map of plugin dependencies (plugin_id -> dependent_plugin_ids)
     dependency_graph: HashMap<String, Vec<String>>,
     /// Map of plugin reverse dependencies (plugin_id -> required_by_plugin_ids)
     reverse_deps: HashMap<String, Vec<String>>,
 }
 
-impl ZiCPluginLifecycleManager {
+impl ZiPluginLifecycleManager {
     pub fn new() -> Self {
-        ZiCPluginLifecycleManager {
+        ZiPluginLifecycleManager {
             dependency_graph: HashMap::new(),
             reverse_deps: HashMap::new(),
         }
     }
 
     /// Register a plugin and its dependencies
-    pub fn register_plugin(&mut self, descriptor: &ZiCPluginDescriptor) -> Result<()> {
+    pub fn register_plugin(&mut self, descriptor: &ZiPluginDescriptor) -> Result<()> {
         let plugin_id = descriptor.id.clone();
         
         // Check for circular dependencies
@@ -397,7 +414,7 @@ impl ZiCPluginLifecycleManager {
     }
 
     /// Check if removing a plugin would break dependencies
-    pub fn can_unload_plugin(&self, plugin_id: &str, loaded_plugins: &HashMap<String, ZiCPluginDescriptor>) -> Result<()> {
+    pub fn can_unload_plugin(&self, plugin_id: &str, loaded_plugins: &HashMap<String, ZiPluginDescriptor>) -> Result<()> {
         if let Some(dependents) = self.reverse_deps.get(plugin_id) {
             for dependent in dependents {
                 if loaded_plugins.contains_key(dependent) {
@@ -424,7 +441,7 @@ impl ZiCPluginLifecycleManager {
     }
 
     /// Check for circular dependencies using DFS
-    fn check_circular_dependencies(&self, plugin_id: &str, dependencies: &[ZiCPluginDependency]) -> Result<()> {
+    fn check_circular_dependencies(&self, plugin_id: &str, dependencies: &[ZiPluginDependency]) -> Result<()> {
         let mut visited = HashMap::new();
         let mut recursion_stack = HashMap::new();
         
@@ -477,114 +494,121 @@ impl ZiCPluginLifecycleManager {
 /// Represents a loaded plugin package, including its metadata and resources.
 #[derive(Debug)]
 #[allow(dead_code)]
-pub struct ZiCLoadedPluginPackage {
+pub struct ZiLoadedPluginPackage {
     /// Path to the plugin package file or directory
     path: std::path::PathBuf,
     /// Plugin descriptor
-    descriptor: ZiCPluginDescriptor,
+    descriptor: ZiPluginDescriptor,
     /// Whether this is a ZIP package
     is_zip: bool,
     /// Last access time for cache management
     last_access: std::time::SystemTime,
 }
 
-/// Minimal in-process implementation of ZiOrbit used during the initial
-/// refactor. For now this is only a stub that refuses to load or call
-/// anything; pipeline integration will be added in later steps.
+/// Minimal in-process implementation of ZiOrbit.
+///
+/// This implementation provides full plugin lifecycle management including:
+/// - Plugin loading from filesystem paths (ZIP packages and directories)
+/// - Plugin unloading with dependency checking
+/// - Plugin upgrades with version validation
+/// - Operator invocation with security audit logging
+/// - Capability invocation with policy enforcement
+/// - Script-backed operator support
+/// - Dependency graph management and circular dependency detection
 #[derive(Debug, Default)]
-pub struct ZiCInProcessOrbit {
-    capabilities: ZiCCapabilityRegistry,
-    plugins: HashMap<String, ZiCPluginDescriptor>,
+pub struct ZiInProcessOrbit {
+    capabilities: ZiCapabilityRegistry,
+    plugins: HashMap<String, ZiPluginDescriptor>,
     /// Map of plugin ID to loaded package information
-    loaded_packages: HashMap<String, ZiCLoadedPluginPackage>,
-    operators: ZiCOperatorRegistry,
-    script_operator: Option<ZiFScriptOperatorFn>,
-    lifecycle_manager: ZiCPluginLifecycleManager,
+    loaded_packages: HashMap<String, ZiLoadedPluginPackage>,
+    operators: ZiOperatorRegistry,
+    script_operator: Option<ScriptOperatorFn>,
+    lifecycle_manager: ZiPluginLifecycleManager,
 }
 
-impl ZiCInProcessOrbit {
+impl ZiInProcessOrbit {
     #[allow(non_snake_case)]
-    pub fn ZiFNew() -> Self {
-        let mut capabilities = ZiCCapabilityRegistry::ZiFNew();
+    pub fn new() -> Self {
+        let mut capabilities = ZiCapabilityRegistry::new();
         // Built-in logging capability available to plugins that opt-in via
-        // their ZiCPluginPolicy.allowed_capabilities.
-        capabilities.ZiFRegister("log.event", _orbit_log_event_capability);
+        // their ZiPluginPolicy.allowed_capabilities.
+        capabilities.register("log.event", _orbit_log_event_capability);
 
-        let mut operators = ZiCOperatorRegistry::ZiFNew();
+        let mut operators = ZiOperatorRegistry::new();
         // Register built-in operators
-        operators.ZiFRegister("filter.equals", crate::operators::filter::ZiFFilterEqualsFactory);
-        operators.ZiFRegister("filter.not_equals", crate::operators::filter::ZiFFilterNotEqualsFactory);
-        operators.ZiFRegister("filter.any", crate::operators::filter::ZiFFilterAnyFactory);
-        operators.ZiFRegister("filter.between", crate::operators::filter::ZiFFilterBetweenFactory);
-        operators.ZiFRegister("filter.less_than", crate::operators::filter::ZiFFilterLessThanFactory);
-        operators.ZiFRegister("filter.greater_than", crate::operators::filter::ZiFFilterGreaterThanFactory);
-        operators.ZiFRegister("filter.is_null", crate::operators::filter::ZiFFilterIsNullFactory);
-        operators.ZiFRegister("filter.regex", crate::operators::filter::ZiFFilterRegexFactory);
-        operators.ZiFRegister("filter.ends_with", crate::operators::filter::ZiFFilterEndsWithFactory);
-        operators.ZiFRegister("filter.starts_with", crate::operators::filter::ZiFFilterStartsWithFactory);
-        operators.ZiFRegister("filter.range", crate::operators::filter::ZiFFilterRangeFactory);
-        operators.ZiFRegister("filter.in", crate::operators::filter::ZiFFilterInFactory);
-        operators.ZiFRegister("filter.not_in", crate::operators::filter::ZiFFilterNotInFactory);
-        operators.ZiFRegister("filter.contains", crate::operators::filter::ZiFFilterContainsFactory);
-        operators.ZiFRegister("filter.contains_all", crate::operators::filter::ZiFFilterContainsAllFactory);
-        operators.ZiFRegister("filter.contains_any", crate::operators::filter::ZiFFilterContainsAnyFactory);
-        operators.ZiFRegister("filter.contains_none", crate::operators::filter::ZiFFilterContainsNoneFactory);
-        operators.ZiFRegister("filter.array_contains", crate::operators::filter::ZiFFilterArrayContainsFactory);
-        operators.ZiFRegister("filter.exists", crate::operators::filter::ZiFFilterExistsFactory);
-        operators.ZiFRegister("filter.not_exists", crate::operators::filter::ZiFFilterNotExistsFactory);
-        operators.ZiFRegister("filter.length_range", crate::operators::filter::ZiFFilterLengthRangeFactory);
-        operators.ZiFRegister("filter.token_range", crate::operators::filter::ZiFFilterTokenRangeFactory);
+        operators.register("filter.equals", crate::operators::filter::filter_equals_factory);
+        operators.register("filter.not_equals", crate::operators::filter::filter_not_equals_factory);
+        operators.register("filter.any", crate::operators::filter::filter_any_factory);
+        operators.register("filter.between", crate::operators::filter::filter_between_factory);
+        operators.register("filter.less_than", crate::operators::filter::filter_less_than_factory);
+        operators.register("filter.greater_than", crate::operators::filter::filter_greater_than_factory);
+        operators.register("filter.is_null", crate::operators::filter::filter_is_null_factory);
+        operators.register("filter.regex", crate::operators::filter::filter_regex_factory);
+        operators.register("filter.ends_with", crate::operators::filter::filter_ends_with_factory);
+        operators.register("filter.starts_with", crate::operators::filter::filter_starts_with_factory);
+        operators.register("filter.range", crate::operators::filter::filter_range_factory);
+        operators.register("filter.in", crate::operators::filter::filter_in_factory);
+        operators.register("filter.not_in", crate::operators::filter::filter_not_in_factory);
+        operators.register("filter.contains", crate::operators::filter::filter_contains_factory);
+        operators.register("filter.contains_all", crate::operators::filter::filter_contains_all_factory);
+        operators.register("filter.contains_any", crate::operators::filter::filter_contains_any_factory);
+        operators.register("filter.contains_none", crate::operators::filter::filter_contains_none_factory);
+        operators.register("filter.array_contains", crate::operators::filter::filter_array_contains_factory);
+        operators.register("filter.exists", crate::operators::filter::filter_exists_factory);
+        operators.register("filter.not_exists", crate::operators::filter::filter_not_exists_factory);
+        operators.register("filter.length_range", crate::operators::filter::filter_length_range_factory);
+        operators.register("filter.token_range", crate::operators::filter::filter_token_range_factory);
         
         // Register language operators
-        operators.ZiFRegister("lang.detect", crate::operators::lang::ZiFLangDetectFactory);
-        operators.ZiFRegister("lang.confidence", crate::operators::lang::ZiFLangConfidenceFactory);
+        operators.register("lang.detect", crate::operators::lang::lang_detect_factory);
+        operators.register("lang.confidence", crate::operators::lang::lang_confidence_factory);
         
         // Register quality operators
-        operators.ZiFRegister("quality.score", crate::operators::quality::ZiFQualityScoreFactory);
-        operators.ZiFRegister("quality.filter", crate::operators::quality::ZiFQualityFilterFactory);
-        operators.ZiFRegister("quality.toxicity", crate::operators::quality::ZiFToxicityFactory);
+        operators.register("quality.score", crate::operators::quality::quality_score_factory);
+        operators.register("quality.filter", crate::operators::quality::quality_filter_factory);
+        operators.register("quality.toxicity", crate::operators::quality::toxicity_factory);
         
         // Register deduplication operators
-        operators.ZiFRegister("dedup.simhash", crate::operators::dedup::ZiFDedupSimhashFactory);
-        operators.ZiFRegister("dedup.minhash", crate::operators::dedup::ZiFDedupMinhashFactory);
-        operators.ZiFRegister("dedup.semantic", crate::operators::dedup::ZiFDedupSemanticFactory);
+        operators.register("dedup.simhash", crate::operators::dedup::dedup_simhash_factory);
+        operators.register("dedup.minhash", crate::operators::dedup::dedup_minhash_factory);
+        operators.register("dedup.semantic", crate::operators::dedup::dedup_semantic_factory);
         
         // Register transform operators
-        operators.ZiFRegister("transform.normalize", crate::operators::transform::ZiFTransformNormalizeFactory);
+        operators.register("transform.normalize", crate::operators::transform::transform_normalize_factory);
 
-        ZiCInProcessOrbit {
+        ZiInProcessOrbit {
             capabilities,
             plugins: HashMap::new(),
             loaded_packages: HashMap::new(),
             operators,
             script_operator: None,
-            lifecycle_manager: ZiCPluginLifecycleManager::new(),
+            lifecycle_manager: ZiPluginLifecycleManager::new(),
         }
     }
 
     /// Expose the internal capability registry so that callers can register
     /// host-provided capabilities before running any plugins.
     #[allow(non_snake_case)]
-    pub fn ZiFCapabilitiesMut(&mut self) -> &mut ZiCCapabilityRegistry {
+    pub fn capabilities_mut(&mut self) -> &mut ZiCapabilityRegistry {
         &mut self.capabilities
     }
 
     /// Construct an execution context for the given plugin, enforcing its
     /// policy (such as version-store access and default visibility).
     #[allow(non_snake_case)]
-    pub fn ZiFMakeExecutionContext<'a>(
+    pub fn make_execution_context<'a>(
         &'a self,
         plugin_id: &str,
-        metrics: &'a mut ZiCQualityMetrics,
-        version_store: Option<&'a mut ZiCVersionStore>,
-    ) -> Result<ZiCExecutionContext<'a>> {
+        metrics: &'a mut ZiQualityMetrics,
+        version_store: Option<&'a mut ZiVersionStore>,
+    ) -> Result<ZiExecutionContext<'a>> {
         let plugin = self.get_plugin(plugin_id)?;
         let vs = if plugin.policy.can_access_versions {
             version_store
         } else {
             None
         };
-        Ok(ZiCExecutionContext {
+        Ok(ZiExecutionContext {
             metrics,
             version_store: vs,
             capabilities: &self.capabilities,
@@ -595,7 +619,7 @@ impl ZiCInProcessOrbit {
     }
 
     /// Internal helper to look up a plugin descriptor by id.
-    fn get_plugin(&self, plugin_id: &str) -> Result<&ZiCPluginDescriptor> {
+    fn get_plugin(&self, plugin_id: &str) -> Result<&ZiPluginDescriptor> {
         self.plugins
             .get(plugin_id)
             .ok_or_else(|| ZiError::internal(format!("unknown plugin: {}", plugin_id)))
@@ -606,7 +630,7 @@ impl ZiCInProcessOrbit {
     /// This is primarily intended for tests and for embedding ZiOrbit inside
     /// other applications before a full plugin loading mechanism is wired.
     #[allow(non_snake_case)]
-    pub fn ZiFRegisterPlugin(&mut self, descriptor: ZiCPluginDescriptor) -> Result<()> {
+    pub fn register_plugin(&mut self, descriptor: ZiPluginDescriptor) -> Result<()> {
         let id = descriptor.id.clone();
         
         // Check if plugin with same ID already exists
@@ -647,7 +671,7 @@ impl ZiCInProcessOrbit {
 
     /// Unload a plugin from the runtime.
     #[allow(non_snake_case)]
-    pub fn ZiFUnloadPlugin(&mut self, plugin_id: &str) -> Result<()> {
+    pub fn unload_plugin(&mut self, plugin_id: &str) -> Result<()> {
         // Check if plugin exists
         if !self.plugins.contains_key(plugin_id) {
             return Err(ZiError::internal(format!("Plugin '{}' not found", plugin_id)));
@@ -682,13 +706,13 @@ impl ZiCInProcessOrbit {
 
     /// Get information about all loaded plugins.
     #[allow(non_snake_case)]
-    pub fn ZiFGetLoadedPlugins(&self) -> Vec<&ZiCPluginDescriptor> {
+    pub fn get_loaded_plugins(&self) -> Vec<&ZiPluginDescriptor> {
         self.plugins.values().collect()
     }
 
     /// Check if a plugin is loaded.
     #[allow(non_snake_case)]
-    pub fn ZiFIsPluginLoaded(&self, plugin_id: &str) -> bool {
+    pub fn is_plugin_loaded(&self, plugin_id: &str) -> bool {
         self.plugins.contains_key(plugin_id)
     }
 
@@ -696,8 +720,8 @@ impl ZiCInProcessOrbit {
     /// used by the core to expose built-in operators and by plugins that wish
     /// to provide additional operators.
     #[allow(non_snake_case)]
-    pub fn ZiFRegisterOperator(&mut self, name: &str, factory: ZiFOperatorFactory) {
-        self.operators.ZiFRegister(name, factory);
+    pub fn register_operator(&mut self, name: &str, factory: OperatorFactory) {
+        self.operators.register(name, factory);
     }
 
     /// Install a script-backed operator runtime. When a plugin exports an
@@ -705,15 +729,15 @@ impl ZiCInProcessOrbit {
     /// registered for that operator name, this hook will be invoked to execute
     /// the script.
     #[allow(non_snake_case)]
-    pub fn ZiFSetScriptOperatorRuntime(&mut self, runtime: ZiFScriptOperatorFn) {
+    pub fn set_script_operator_runtime(&mut self, runtime: ScriptOperatorFn) {
         self.script_operator = Some(runtime);
     }
 
     /// Upgrade a plugin to a new version.
     #[allow(non_snake_case)]
-    pub fn ZiFUpgradePlugin(&mut self, plugin_id: &str, new_path: &Path) -> Result<()> {
+    pub fn upgrade_plugin(&mut self, plugin_id: &str, new_path: &Path) -> Result<()> {
         // Load new plugin descriptor
-        let new_descriptor = plugin_package::ZiFLoadPluginDescriptorFromPath(new_path)?;
+        let new_descriptor = plugin_package::load_plugin_descriptor_from_path(new_path)?;
         
         // Check if plugin exists
         if !self.plugins.contains_key(plugin_id) {
@@ -763,10 +787,10 @@ impl ZiCInProcessOrbit {
         self.lifecycle_manager.unregister_plugin(plugin_id);
         
         // Register new plugin (this will handle lifecycle management)
-        self.ZiFRegisterPlugin(new_descriptor.clone())?;
+        self.register_plugin(new_descriptor.clone())?;
         
         // Update loaded package information
-        let loaded_package = ZiCLoadedPluginPackage {
+        let loaded_package = ZiLoadedPluginPackage {
             path: new_path.to_path_buf(),
             descriptor: new_descriptor,
             is_zip,
@@ -778,10 +802,10 @@ impl ZiCInProcessOrbit {
     }
 }
 
-impl ZiCOrbit for ZiCInProcessOrbit {
-    fn ZiFLoadPluginFromPath(&mut self, path: &Path) -> Result<ZiCPluginDescriptor> {
+impl ZiOrbit for ZiInProcessOrbit {
+    fn load_plugin_from_path(&mut self, path: &Path) -> Result<ZiPluginDescriptor> {
         // Validate plugin package structure first
-        if let Err(e) = plugin_package::ZiFValidatePluginPackage(path) {
+        if let Err(e) = plugin_package::validate_plugin_package(path) {
             log::error!(
                 "orbit.plugin.validate_failed: failed to validate plugin package - path={}, error={}",
                 path.to_string_lossy(),
@@ -791,7 +815,7 @@ impl ZiCOrbit for ZiCInProcessOrbit {
         }
         
         // Load plugin descriptor to get plugin ID for caching check
-        let temp_descriptor = plugin_package::ZiFLoadPluginDescriptorFromPath(path)?;
+        let temp_descriptor = plugin_package::load_plugin_descriptor_from_path(path)?;
         let plugin_id = temp_descriptor.id.clone();
         
         // If plugin is already loaded, return existing descriptor
@@ -828,10 +852,10 @@ impl ZiCOrbit for ZiCInProcessOrbit {
         );
         
         // Register the plugin
-        self.ZiFRegisterPlugin(temp_descriptor.clone())?;
+        self.register_plugin(temp_descriptor.clone())?;
         
         // Create and store loaded package information for caching
-        let loaded_package = ZiCLoadedPluginPackage {
+        let loaded_package = ZiLoadedPluginPackage {
             path: path.to_path_buf(),
             descriptor: temp_descriptor.clone(),
             is_zip,
@@ -842,35 +866,35 @@ impl ZiCOrbit for ZiCInProcessOrbit {
         Ok(temp_descriptor)
     }
 
-    fn ZiFUnloadPlugin(&mut self, plugin_id: &str) -> crate::errors::Result<()> {
-        self.ZiFUnloadPlugin(plugin_id)
+    fn unload_plugin(&mut self, plugin_id: &str) -> crate::errors::Result<()> {
+        self.unload_plugin(plugin_id)
     }
 
-    fn ZiFGetLoadedPlugins(&self) -> Vec<&ZiCPluginDescriptor> {
-        self.ZiFGetLoadedPlugins()
+    fn get_loaded_plugins(&self) -> Vec<&ZiPluginDescriptor> {
+        self.get_loaded_plugins()
     }
 
-    fn ZiFIsPluginLoaded(&self, plugin_id: &str) -> bool {
-        self.ZiFIsPluginLoaded(plugin_id)
+    fn is_plugin_loaded(&self, plugin_id: &str) -> bool {
+        self.is_plugin_loaded(plugin_id)
     }
 
-    fn ZiFUpgradePlugin(&mut self, plugin_id: &str, new_path: &Path) -> crate::errors::Result<()> {
-        self.ZiFUpgradePlugin(plugin_id, new_path)
+    fn upgrade_plugin(&mut self, plugin_id: &str, new_path: &Path) -> crate::errors::Result<()> {
+        self.upgrade_plugin(plugin_id, new_path)
     }
 
-    fn ZiFCallOperator(
+    fn call_operator(
         &self,
         plugin_id: &str,
         operator_name: &str,
-        batch: ZiCRecordBatch,
+        batch: ZiRecordBatch,
         config: &Value,
-        ctx: &mut ZiCExecutionContext,
-    ) -> Result<ZiCRecordBatch> {
+        ctx: &mut ZiExecutionContext,
+    ) -> Result<ZiRecordBatch> {
         let plugin = self.get_plugin(plugin_id)?;
         // Emit a structured security audit log for operator calls.
         let visibility_str = match ctx.visibility {
-            ZiCDataVisibility::Full => "full",
-            ZiCDataVisibility::MaskSensitive => "mask_sensitive",
+            ZiDataVisibility::Full => "full",
+            ZiDataVisibility::MaskSensitive => "mask_sensitive",
         };
         
         // Emit security audit log at INFO level for all operator calls
@@ -896,9 +920,9 @@ impl ZiCOrbit for ZiCInProcessOrbit {
         let export_script = plugin
             .exports
             .iter()
-            .find(|e| e.kind == ZiCPluginExportKind::Operator && e.name == operator_name)
+            .find(|e| e.kind == ZiPluginExportKind::Operator && e.name == operator_name)
             .and_then(|e| e.script.as_deref());
-        let factory_result = self.operators.ZiFGet(operator_name);
+        let factory_result = self.operators.get(operator_name);
 
         match factory_result {
             Ok(factory) => {
@@ -907,8 +931,8 @@ impl ZiCOrbit for ZiCInProcessOrbit {
                 // provide the operator with a masked view of the batch to avoid
                 // leaking sensitive metadata to untrusted plugins.
                 let input_batch = match ctx.visibility {
-                    ZiCDataVisibility::Full => batch,
-                    ZiCDataVisibility::MaskSensitive => _mask_sensitive_view(batch),
+                    ZiDataVisibility::Full => batch,
+                    ZiDataVisibility::MaskSensitive => _mask_sensitive_view(batch),
                 };
                 match op {
                     Ok(operator) => operator.apply(input_batch),
@@ -936,8 +960,8 @@ impl ZiCOrbit for ZiCInProcessOrbit {
                             script_path
                         );
                         let input_batch = match ctx.visibility {
-                            ZiCDataVisibility::Full => batch,
-                            ZiCDataVisibility::MaskSensitive => _mask_sensitive_view(batch),
+                            ZiDataVisibility::Full => batch,
+                            ZiDataVisibility::MaskSensitive => _mask_sensitive_view(batch),
                         };
                         return runtime(
                             plugin_id,
@@ -966,12 +990,12 @@ impl ZiCOrbit for ZiCInProcessOrbit {
         }
     }
 
-    fn ZiFCallCapability(
+    fn call_capability(
         &mut self,
         plugin_id: &str,
         capability_name: &str,
         args: &Value,
-        ctx: &mut ZiCExecutionContext,
+        ctx: &mut ZiExecutionContext,
     ) -> Result<Value> {
         let plugin = self.get_plugin(plugin_id)?;
 
@@ -1017,6 +1041,6 @@ impl ZiCOrbit for ZiCInProcessOrbit {
             capability_name
         );
 
-        self.capabilities.ZiFCall(capability_name, args, ctx)
+        self.capabilities.call(capability_name, args, ctx)
     }
 }

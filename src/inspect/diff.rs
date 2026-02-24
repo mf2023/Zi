@@ -4,7 +4,7 @@
 //! The Zi project belongs to the Dunimd project team.
 //!
 //! Licensed under the Apache License, Version 2.0 (the "License");
-//! you may not use this file except in compliance with the License.
+//! You may not use this file except in compliance with the License.
 //! You may obtain a copy of the License at
 //!
 //!     http://www.apache.org/licenses/LICENSE-2.0
@@ -20,19 +20,19 @@ use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::record::{ZiCRecord, ZiCRecordBatch};
+use crate::record::{ZiRecord, ZiRecordBatch};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ZiCDiffChange {
+pub struct ZiDiffChange {
     pub path: String,
     pub old_value: Option<Value>,
     pub new_value: Option<Value>,
-    pub change_type: ZiCChangeType,
+    pub change_type: ZiChangeType,
     pub similarity: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub enum ZiCChangeType {
+pub enum ZiChangeType {
     Added,
     Removed,
     Modified,
@@ -40,7 +40,7 @@ pub enum ZiCChangeType {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct ZiCDiffStats {
+pub struct ZiDiffStats {
     pub total_records_old: usize,
     pub total_records_new: usize,
     pub records_added: usize,
@@ -54,15 +54,15 @@ pub struct ZiCDiffStats {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct ZiCDiffReport {
-    pub stats: ZiCDiffStats,
-    pub changes: Vec<ZiCDiffChange>,
-    pub field_changes: Vec<ZiCFieldChange>,
-    pub record_diffs: Vec<ZiCRecordDiff>,
+pub struct ZiDiffReport {
+    pub stats: ZiDiffStats,
+    pub changes: Vec<ZiDiffChange>,
+    pub field_changes: Vec<ZiFieldChange>,
+    pub record_diffs: Vec<ZiRecordDiff>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ZiCFieldChange {
+pub struct ZiFieldChange {
     pub field_path: String,
     pub change_count: usize,
     pub old_type: Option<String>,
@@ -72,15 +72,15 @@ pub struct ZiCFieldChange {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ZiCRecordDiff {
+pub struct ZiRecordDiff {
     pub record_id: String,
-    pub diff_type: ZiCChangeType,
-    pub field_changes: Vec<ZiCDiffChange>,
+    pub diff_type: ZiChangeType,
+    pub field_changes: Vec<ZiDiffChange>,
     pub similarity: f64,
 }
 
 #[derive(Clone, Debug)]
-pub struct ZiCDifferConfig {
+pub struct ZiDifferConfig {
     pub max_changes: usize,
     pub max_field_samples: usize,
     pub compute_similarity: bool,
@@ -89,7 +89,7 @@ pub struct ZiCDifferConfig {
     pub ignore_fields: HashSet<String>,
 }
 
-impl Default for ZiCDifferConfig {
+impl Default for ZiDifferConfig {
     fn default() -> Self {
         Self {
             max_changes: 1000,
@@ -103,56 +103,56 @@ impl Default for ZiCDifferConfig {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct ZiCDiffer {
-    config: ZiCDifferConfig,
+pub struct ZiDiffer {
+    config: ZiDifferConfig,
 }
 
-impl ZiCDiffer {
+impl ZiDiffer {
     #[allow(non_snake_case)]
-    pub fn ZiFNew() -> Self {
+    pub fn new() -> Self {
         Self {
-            config: ZiCDifferConfig::default(),
+            config: ZiDifferConfig::default(),
         }
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFWithConfig(mut self, config: ZiCDifferConfig) -> Self {
+    pub fn with_config(mut self, config: ZiDifferConfig) -> Self {
         self.config = config;
         self
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFWithMaxChanges(mut self, max: usize) -> Self {
+    pub fn with_max_changes(mut self, max: usize) -> Self {
         self.config.max_changes = max;
         self
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFIgnoreField(mut self, field: &str) -> Self {
+    pub fn ignore_field(mut self, field: &str) -> Self {
         self.config.ignore_fields.insert(field.to_string());
         self
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFDiff(&self, old: &ZiCRecordBatch, new: &ZiCRecordBatch) -> ZiCDiffReport {
-        let old_map: HashMap<String, &ZiCRecord> = old
+    pub fn diff(&self, old: &ZiRecordBatch, new: &ZiRecordBatch) -> ZiDiffReport {
+        let old_map: HashMap<String, &ZiRecord> = old
             .iter()
             .filter_map(|r| r.id.as_ref().map(|id| (id.clone(), r)))
             .collect();
 
-        let new_map: HashMap<String, &ZiCRecord> = new
+        let new_map: HashMap<String, &ZiRecord> = new
             .iter()
             .filter_map(|r| r.id.as_ref().map(|id| (id.clone(), r)))
             .collect();
 
-        let mut stats = ZiCDiffStats {
+        let mut stats = ZiDiffStats {
             total_records_old: old.len(),
             total_records_new: new.len(),
             ..Default::default()
         };
 
         let mut changes = Vec::new();
-        let mut field_change_tracker: HashMap<String, ZiCFieldChangeBuilder> = HashMap::new();
+        let mut field_change_tracker: HashMap<String, ZiFieldChangeBuilder> = HashMap::new();
         let mut record_diffs = Vec::new();
 
         let old_ids: HashSet<&String> = old_map.keys().collect();
@@ -166,14 +166,14 @@ impl ZiCDiffer {
                 break;
             }
             if let Some(record) = new_map.get(*id) {
-                let diff = ZiCRecordDiff {
+                let diff = ZiRecordDiff {
                     record_id: id.to_string(),
-                    diff_type: ZiCChangeType::Added,
-                    field_changes: vec![ZiCDiffChange {
+                    diff_type: ZiChangeType::Added,
+                    field_changes: vec![ZiDiffChange {
                         path: "record".to_string(),
                         old_value: None,
                         new_value: Some(record.payload.clone()),
-                        change_type: ZiCChangeType::Added,
+                        change_type: ZiChangeType::Added,
                         similarity: None,
                     }],
                     similarity: 0.0,
@@ -187,14 +187,14 @@ impl ZiCDiffer {
                 break;
             }
             if let Some(record) = old_map.get(*id) {
-                let diff = ZiCRecordDiff {
+                let diff = ZiRecordDiff {
                     record_id: id.to_string(),
-                    diff_type: ZiCChangeType::Removed,
-                    field_changes: vec![ZiCDiffChange {
+                    diff_type: ZiChangeType::Removed,
+                    field_changes: vec![ZiDiffChange {
                         path: "record".to_string(),
                         old_value: Some(record.payload.clone()),
                         new_value: None,
-                        change_type: ZiCChangeType::Removed,
+                        change_type: ZiChangeType::Removed,
                         similarity: None,
                     }],
                     similarity: 0.0,
@@ -216,9 +216,9 @@ impl ZiCDiffer {
                 if !field_changes.is_empty() {
                     stats.records_modified += 1;
                     
-                    let diff = ZiCRecordDiff {
+                    let diff = ZiRecordDiff {
                         record_id: id.clone(),
-                        diff_type: ZiCChangeType::Modified,
+                        diff_type: ZiChangeType::Modified,
                         field_changes: field_changes.clone(),
                         similarity: record_similarity,
                     };
@@ -236,7 +236,7 @@ impl ZiCDiffer {
             }
         }
 
-        let field_changes: Vec<ZiCFieldChange> = field_change_tracker
+        let field_changes: Vec<ZiFieldChange> = field_change_tracker
             .into_values()
             .map(|b| b.build(self.config.max_field_samples))
             .collect();
@@ -253,7 +253,7 @@ impl ZiCDiffer {
 
         stats.similarity_score = self.calculate_similarity_score(&stats, old.len(), new.len());
 
-        ZiCDiffReport {
+        ZiDiffReport {
             stats,
             changes,
             field_changes,
@@ -263,10 +263,10 @@ impl ZiCDiffer {
 
     fn diff_records(
         &self,
-        old: &ZiCRecord,
-        new: &ZiCRecord,
-        changes: &mut Vec<ZiCDiffChange>,
-        field_tracker: &mut HashMap<String, ZiCFieldChangeBuilder>,
+        old: &ZiRecord,
+        new: &ZiRecord,
+        changes: &mut Vec<ZiDiffChange>,
+        field_tracker: &mut HashMap<String, ZiFieldChangeBuilder>,
     ) -> f64 {
         self.diff_values("payload", &old.payload, &new.payload, changes, field_tracker);
 
@@ -287,8 +287,8 @@ impl ZiCDiffer {
         path: &str,
         old: &Value,
         new: &Value,
-        changes: &mut Vec<ZiCDiffChange>,
-        field_tracker: &mut HashMap<String, ZiCFieldChangeBuilder>,
+        changes: &mut Vec<ZiDiffChange>,
+        field_tracker: &mut HashMap<String, ZiFieldChangeBuilder>,
     ) {
         if self.config.ignore_fields.contains(path) {
             return;
@@ -309,11 +309,11 @@ impl ZiCDiffer {
                         self.diff_values(&new_path, old_val, new_val, changes, field_tracker);
                     } else {
                         self.track_field_change(&new_path, old_val, &Value::Null, field_tracker);
-                        changes.push(ZiCDiffChange {
+                        changes.push(ZiDiffChange {
                             path: new_path,
                             old_value: Some(old_val.clone()),
                             new_value: None,
-                            change_type: ZiCChangeType::Removed,
+                            change_type: ZiChangeType::Removed,
                             similarity: None,
                         });
                     }
@@ -325,11 +325,11 @@ impl ZiCDiffer {
                     }
                     if !old_map.contains_key(key) {
                         self.track_field_change(&new_path, &Value::Null, new_val, field_tracker);
-                        changes.push(ZiCDiffChange {
+                        changes.push(ZiDiffChange {
                             path: new_path,
                             old_value: None,
                             new_value: Some(new_val.clone()),
-                            change_type: ZiCChangeType::Added,
+                            change_type: ZiChangeType::Added,
                             similarity: None,
                         });
                     }
@@ -342,11 +342,11 @@ impl ZiCDiffer {
                     } else {
                         None
                     };
-                    changes.push(ZiCDiffChange {
+                    changes.push(ZiDiffChange {
                         path: path.to_string(),
                         old_value: Some(old.clone()),
                         new_value: Some(new.clone()),
-                        change_type: ZiCChangeType::Modified,
+                        change_type: ZiChangeType::Modified,
                         similarity,
                     });
                 } else {
@@ -364,21 +364,21 @@ impl ZiCDiffer {
                 };
                 
                 self.track_field_change(path, old, new, field_tracker);
-                changes.push(ZiCDiffChange {
+                changes.push(ZiDiffChange {
                     path: path.to_string(),
                     old_value: Some(old.clone()),
                     new_value: Some(new.clone()),
-                    change_type: ZiCChangeType::Modified,
+                    change_type: ZiChangeType::Modified,
                     similarity,
                 });
             }
             _ => {
                 self.track_field_change(path, old, new, field_tracker);
-                changes.push(ZiCDiffChange {
+                changes.push(ZiDiffChange {
                     path: path.to_string(),
                     old_value: Some(old.clone()),
                     new_value: Some(new.clone()),
-                    change_type: ZiCChangeType::Modified,
+                    change_type: ZiChangeType::Modified,
                     similarity: None,
                 });
             }
@@ -390,14 +390,14 @@ impl ZiCDiffer {
         path: &str,
         old_value: &Value,
         new_value: &Value,
-        tracker: &mut HashMap<String, ZiCFieldChangeBuilder>,
+        tracker: &mut HashMap<String, ZiFieldChangeBuilder>,
     ) {
         if !self.config.track_field_changes {
             return;
         }
 
         let builder = tracker.entry(path.to_string()).or_insert_with(|| {
-            ZiCFieldChangeBuilder::new(path.to_string())
+            ZiFieldChangeBuilder::new(path.to_string())
         });
 
         builder.old_type = Some(self.value_type(old_value));
@@ -515,7 +515,7 @@ impl ZiCDiffer {
         }
     }
 
-    fn calculate_similarity_score(&self, stats: &ZiCDiffStats, old_count: usize, new_count: usize) -> f64 {
+    fn calculate_similarity_score(&self, stats: &ZiDiffStats, old_count: usize, new_count: usize) -> f64 {
         if old_count == 0 && new_count == 0 {
             return 1.0;
         }
@@ -532,7 +532,7 @@ impl ZiCDiffer {
     }
 }
 
-struct ZiCFieldChangeBuilder {
+struct ZiFieldChangeBuilder {
     field_path: String,
     change_count: usize,
     old_type: Option<String>,
@@ -541,7 +541,7 @@ struct ZiCFieldChangeBuilder {
     sample_new_values: Vec<Value>,
 }
 
-impl ZiCFieldChangeBuilder {
+impl ZiFieldChangeBuilder {
     fn new(field_path: String) -> Self {
         Self {
             field_path,
@@ -553,13 +553,13 @@ impl ZiCFieldChangeBuilder {
         }
     }
 
-    fn build(self, max_samples: usize) -> ZiCFieldChange {
+    fn build(self, max_samples: usize) -> ZiFieldChange {
         let mut sample_old = self.sample_old_values;
         sample_old.truncate(max_samples);
         let mut sample_new = self.sample_new_values;
         sample_new.truncate(max_samples);
 
-        ZiCFieldChange {
+        ZiFieldChange {
             field_path: self.field_path,
             change_count: self.change_count,
             old_type: self.old_type,

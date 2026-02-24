@@ -28,29 +28,29 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::errors::{Result, ZiError};
-use crate::metrics::ZiCQualityMetrics;
-use crate::operator::ZiCOperator;
-use crate::record::ZiCRecord;
+use crate::metrics::ZiQualityMetrics;
+use crate::operator::ZiOperator;
+use crate::record::ZiRecord;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ZiCDataHash(pub [u8; 32]);
+pub struct ZiDataHash(pub [u8; 32]);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ZiCCodeHash(pub [u8; 32]);
+pub struct ZiCodeHash(pub [u8; 32]);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ZiCEnvHash(pub [u8; 32]);
+pub struct ZiEnvHash(pub [u8; 32]);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ZiCTripleHash {
-    pub data: ZiCDataHash,
-    pub code: ZiCCodeHash,
-    pub env: ZiCEnvHash,
+pub struct ZiTripleHash {
+    pub data: ZiDataHash,
+    pub code: ZiCodeHash,
+    pub env: ZiEnvHash,
 }
 
-impl ZiCTripleHash {
+impl ZiTripleHash {
     #[allow(non_snake_case)]
-    pub fn ZiFToString(&self) -> String {
+    pub fn to_string(&self) -> String {
         format!(
             "data={},code={},env={}",
             blake3::Hash::from(self.data.0).to_hex(),
@@ -60,7 +60,7 @@ impl ZiCTripleHash {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFToCompactString(&self) -> String {
+    pub fn to_compact_string(&self) -> String {
         format!(
             "{}{}{}",
             blake3::Hash::from(self.data.0).to_hex(),
@@ -71,7 +71,7 @@ impl ZiCTripleHash {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFComputeDataHash(batch: &[ZiCRecord]) -> ZiCDataHash {
+pub fn compute_data_hash(batch: &[ZiRecord]) -> ZiDataHash {
     let mut hasher = Blake3Hasher::new();
     for record in batch {
         if let Some(ref id) = record.id {
@@ -89,26 +89,26 @@ pub fn ZiFComputeDataHash(batch: &[ZiCRecord]) -> ZiCDataHash {
         }
         hasher.update(b"---\n");
     }
-    ZiCDataHash(*hasher.finalize().as_bytes())
+    ZiDataHash(*hasher.finalize().as_bytes())
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFComputeCodeHash(operators: &[&dyn ZiCOperator]) -> ZiCCodeHash {
+pub fn compute_code_hash(operators: &[&dyn ZiOperator]) -> ZiCodeHash {
     let mut hasher = Blake3Hasher::new();
     for op in operators {
         hasher.update(b"operator:");
         hasher.update(op.name().as_bytes());
         hasher.update(b"\n");
     }
-    ZiCCodeHash(*hasher.finalize().as_bytes())
+    ZiCodeHash(*hasher.finalize().as_bytes())
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFComputeEnvHash(
+pub fn compute_env_hash(
     zi_version: &str,
     rust_version: &str,
     random_seed: u64,
-) -> ZiCEnvHash {
+) -> ZiEnvHash {
     let mut hasher = Blake3Hasher::new();
     hasher.update(b"zi_version=");
     hasher.update(zi_version.as_bytes());
@@ -119,22 +119,22 @@ pub fn ZiFComputeEnvHash(
     hasher.update(b"random_seed=");
     hasher.update(&random_seed.to_ne_bytes());
     hasher.update(b"\n");
-    ZiCEnvHash(*hasher.finalize().as_bytes())
+    ZiEnvHash(*hasher.finalize().as_bytes())
 }
 
 #[derive(Clone, Debug)]
-pub struct ZiCVersion {
+pub struct ZiVersion {
     pub id: String,
     pub parent: Option<String>,
     pub created_at: SystemTime,
     pub metadata: Map<String, Value>,
-    pub metrics: ZiCQualityMetrics,
+    pub metrics: ZiQualityMetrics,
     pub digest: String,
-    pub triple_hash: ZiCTripleHash,
+    pub triple_hash: ZiTripleHash,
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct ZiCVersionMetricsDelta {
+pub struct ZiVersionMetricsDelta {
     pub total_records_delta: isize,
     pub average_payload_chars_delta: f64,
     pub average_payload_tokens_delta: f64,
@@ -143,13 +143,13 @@ pub struct ZiCVersionMetricsDelta {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct ZiCVersionDiff {
+pub struct ZiVersionDiff {
     pub left: String,
     pub right: String,
     pub metadata_added: Map<String, Value>,
     pub metadata_removed: Map<String, Value>,
     pub metadata_changed: HashMap<String, (Value, Value)>,
-    pub metrics_delta: ZiCVersionMetricsDelta,
+    pub metrics_delta: ZiVersionMetricsDelta,
     pub triple_hash_changed: bool,
     pub data_hash_changed: bool,
     pub code_hash_changed: bool,
@@ -157,21 +157,21 @@ pub struct ZiCVersionDiff {
 }
 
 #[derive(Debug)]
-pub struct ZiCVersionStore {
+pub struct ZiVersionStore {
     next_id: u64,
-    versions: HashMap<String, ZiCVersion>,
+    versions: HashMap<String, ZiVersion>,
 }
 
 #[derive(Clone, Debug)]
-pub struct ZiCVersionPersistOptions {
+pub struct ZiVersionPersistOptions {
     pub pretty: bool,
     pub atomic: bool,
     pub create_directories: bool,
 }
 
-impl Default for ZiCVersionPersistOptions {
+impl Default for ZiVersionPersistOptions {
     fn default() -> Self {
-        ZiCVersionPersistOptions {
+        ZiVersionPersistOptions {
             pretty: true,
             atomic: true,
             create_directories: true,
@@ -179,23 +179,23 @@ impl Default for ZiCVersionPersistOptions {
     }
 }
 
-impl ZiCVersionStore {
+impl ZiVersionStore {
     #[allow(non_snake_case)]
-    pub fn ZiFNew() -> Self {
-        ZiCVersionStore {
+    pub fn new() -> Self {
+        ZiVersionStore {
             next_id: 1,
             versions: HashMap::new(),
         }
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFCreate(
+    pub fn create(
         &mut self,
         parent: Option<&str>,
         metadata: Map<String, Value>,
-        metrics: ZiCQualityMetrics,
-        triple_hash: ZiCTripleHash,
-    ) -> Result<ZiCVersion> {
+        metrics: ZiQualityMetrics,
+        triple_hash: ZiTripleHash,
+    ) -> Result<ZiVersion> {
         if let Some(parent_id) = parent {
             if !self.versions.contains_key(parent_id) {
                 return Err(ZiError::validation(format!(
@@ -209,7 +209,7 @@ impl ZiCVersionStore {
 
         let digest = _compute_digest_from_triple(&triple_hash);
 
-        let version = ZiCVersion {
+        let version = ZiVersion {
             id: id.clone(),
             parent: parent.map(|p| p.to_string()),
             created_at: SystemTime::now(),
@@ -223,12 +223,12 @@ impl ZiCVersionStore {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFGet(&self, id: &str) -> Option<ZiCVersion> {
+    pub fn get(&self, id: &str) -> Option<ZiVersion> {
         self.versions.get(id).cloned()
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFList(&self) -> Vec<ZiCVersion> {
+    pub fn list(&self) -> Vec<ZiVersion> {
         let mut entries: Vec<_> = self.versions.values().cloned().collect();
         entries.sort_by_key(|version| {
             version
@@ -240,7 +240,7 @@ impl ZiCVersionStore {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFCompare(&self, left: &str, right: &str) -> Result<ZiCVersionDiff> {
+    pub fn compare(&self, left: &str, right: &str) -> Result<ZiVersionDiff> {
         let left_version = self
             .versions
             .get(left)
@@ -272,7 +272,7 @@ impl ZiCVersionStore {
             }
         }
 
-        let metrics_delta = ZiCVersionMetricsDelta {
+        let metrics_delta = ZiVersionMetricsDelta {
             total_records_delta: right_version.metrics.total_records as isize
                 - left_version.metrics.total_records as isize,
             average_payload_chars_delta: right_version.metrics.average_payload_chars
@@ -287,7 +287,7 @@ impl ZiCVersionStore {
 
         let triple_hash_changed = left_version.triple_hash != right_version.triple_hash;
 
-        Ok(ZiCVersionDiff {
+        Ok(ZiVersionDiff {
             left: left.to_string(),
             right: right.to_string(),
             metadata_added: added,
@@ -302,15 +302,15 @@ impl ZiCVersionStore {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFSaveToPath(&self, path: impl AsRef<Path>) -> Result<()> {
-        self.ZiFSaveToPathWithOptions(path, ZiCVersionPersistOptions::default())
+    pub fn save_to_path(&self, path: impl AsRef<Path>) -> Result<()> {
+        self.save_to_path_with_options(path, ZiVersionPersistOptions::default())
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFSaveToPathWithOptions(
+    pub fn save_to_path_with_options(
         &self,
         path: impl AsRef<Path>,
-        options: ZiCVersionPersistOptions,
+        options: ZiVersionPersistOptions,
     ) -> Result<()> {
         let path = path.as_ref();
         if options.create_directories {
@@ -321,7 +321,7 @@ impl ZiCVersionStore {
             }
         }
 
-        let payload = ZiCVersionStoreFile::from_store(self);
+        let payload = ZiVersionStoreFile::from_store(self);
 
         if options.atomic {
             let parent = path.parent().unwrap_or_else(|| Path::new("."));
@@ -361,15 +361,15 @@ impl ZiCVersionStore {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFLoadFromPath(path: impl AsRef<Path>) -> Result<Self> {
-        Self::ZiFLoadFromPathWithValidation(path, true)
+    pub fn load_from_path(path: impl AsRef<Path>) -> Result<Self> {
+        Self::load_from_path_with_validation(path, true)
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFLoadFromPathWithValidation(path: impl AsRef<Path>, validate: bool) -> Result<Self> {
+    pub fn load_from_path_with_validation(path: impl AsRef<Path>, validate: bool) -> Result<Self> {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
-        let payload: ZiCVersionStoreFile = serde_json::from_reader(reader)?;
+        let payload: ZiVersionStoreFile = serde_json::from_reader(reader)?;
         let store = payload.into_store();
         if validate {
             store._validate_consistency()?;
@@ -411,7 +411,7 @@ impl ZiCVersionStore {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFComputeDigest(batch: &[ZiCRecord]) -> String {
+pub fn compute_digest(batch: &[ZiRecord]) -> String {
     let mut hasher = DefaultHasher::new();
     for record in batch {
         record.id.hash(&mut hasher);
@@ -423,31 +423,31 @@ pub fn ZiFComputeDigest(batch: &[ZiCRecord]) -> String {
     format!("{:016x}", hasher.finish())
 }
 
-fn _compute_digest_from_triple(triple: &ZiCTripleHash) -> String {
-    triple.ZiFToCompactString()
+fn _compute_digest_from_triple(triple: &ZiTripleHash) -> String {
+    triple.to_compact_string()
 }
 
 #[derive(Serialize, Deserialize)]
-struct ZiCVersionRecord {
+struct ZiVersionRecord {
     id: String,
     parent: Option<String>,
     created_at_secs: u64,
     created_at_nanos: u32,
     metadata: Map<String, Value>,
-    metrics: ZiCQualityMetrics,
+    metrics: ZiQualityMetrics,
     digest: String,
-    triple_hash: ZiCTripleHashRecord,
+    triple_hash: ZiTripleHashRecord,
 }
 
 #[derive(Serialize, Deserialize)]
-struct ZiCTripleHashRecord {
+struct ZiTripleHashRecord {
     data: String,
     code: String,
     env: String,
 }
 
-impl ZiCTripleHashRecord {
-    fn from_triple(triple: &ZiCTripleHash) -> Self {
+impl ZiTripleHashRecord {
+    fn from_triple(triple: &ZiTripleHash) -> Self {
         Self {
             data: blake3::Hash::from(triple.data.0).to_hex().to_string(),
             code: blake3::Hash::from(triple.code.0).to_hex().to_string(),
@@ -455,38 +455,38 @@ impl ZiCTripleHashRecord {
         }
     }
 
-    fn into_triple(&self) -> Result<ZiCTripleHash> {
+    fn into_triple(&self) -> Result<ZiTripleHash> {
         let data_hash = blake3::Hash::from_hex(&self.data)
             .map_err(|_| ZiError::validation("invalid data hash in version file"))?;
         let code_hash = blake3::Hash::from_hex(&self.code)
             .map_err(|_| ZiError::validation("invalid code hash in version file"))?;
         let env_hash = blake3::Hash::from_hex(&self.env)
             .map_err(|_| ZiError::validation("invalid env hash in version file"))?;
-        Ok(ZiCTripleHash {
-            data: ZiCDataHash(*data_hash.as_bytes()),
-            code: ZiCCodeHash(*code_hash.as_bytes()),
-            env: ZiCEnvHash(*env_hash.as_bytes()),
+        Ok(ZiTripleHash {
+            data: ZiDataHash(*data_hash.as_bytes()),
+            code: ZiCodeHash(*code_hash.as_bytes()),
+            env: ZiEnvHash(*env_hash.as_bytes()),
         })
     }
 }
 
 #[derive(Serialize, Deserialize)]
-struct ZiCVersionStoreFile {
+struct ZiVersionStoreFile {
     next_id: u64,
-    versions: Vec<ZiCVersionRecord>,
+    versions: Vec<ZiVersionRecord>,
 }
 
-impl ZiCVersionStoreFile {
-    fn from_store(store: &ZiCVersionStore) -> Self {
+impl ZiVersionStoreFile {
+    fn from_store(store: &ZiVersionStore) -> Self {
         let versions = store
-            .ZiFList()
+            .list()
             .into_iter()
             .map(|version| {
                 let duration = version
                     .created_at
                     .duration_since(UNIX_EPOCH)
                     .unwrap_or_else(|_| Duration::from_secs(0));
-                ZiCVersionRecord {
+                ZiVersionRecord {
                     id: version.id,
                     parent: version.parent,
                     created_at_secs: duration.as_secs(),
@@ -494,28 +494,28 @@ impl ZiCVersionStoreFile {
                     metadata: version.metadata,
                     metrics: version.metrics,
                     digest: version.digest,
-                    triple_hash: ZiCTripleHashRecord::from_triple(&version.triple_hash),
+                    triple_hash: ZiTripleHashRecord::from_triple(&version.triple_hash),
                 }
             })
             .collect();
 
-        ZiCVersionStoreFile {
+        ZiVersionStoreFile {
             next_id: store.next_id,
             versions,
         }
     }
 
-    fn into_store(self) -> ZiCVersionStore {
+    fn into_store(self) -> ZiVersionStore {
         let mut versions = HashMap::new();
         for record in self.versions {
             let duration = Duration::new(record.created_at_secs, record.created_at_nanos);
             let created_at = UNIX_EPOCH + duration;
-            let triple_hash = record.triple_hash.into_triple().unwrap_or_else(|_| ZiCTripleHash {
-                data: ZiCDataHash([0u8; 32]),
-                code: ZiCCodeHash([0u8; 32]),
-                env: ZiCEnvHash([0u8; 32]),
+            let triple_hash = record.triple_hash.into_triple().unwrap_or_else(|_| ZiTripleHash {
+                data: ZiDataHash([0u8; 32]),
+                code: ZiCodeHash([0u8; 32]),
+                env: ZiEnvHash([0u8; 32]),
             });
-            let version = ZiCVersion {
+            let version = ZiVersion {
                 id: record.id.clone(),
                 parent: record.parent.clone(),
                 created_at,
@@ -527,7 +527,7 @@ impl ZiCVersionStoreFile {
             versions.insert(record.id, version);
         }
 
-        ZiCVersionStore {
+        ZiVersionStore {
             next_id: self.next_id,
             versions,
         }
@@ -537,7 +537,7 @@ impl ZiCVersionStoreFile {
 
 fn _write_store<W: Write>(
     writer: &mut W,
-    payload: &ZiCVersionStoreFile,
+    payload: &ZiVersionStoreFile,
     pretty: bool,
 ) -> Result<()> {
     if pretty {

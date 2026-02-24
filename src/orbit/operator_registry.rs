@@ -15,37 +15,48 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # Operator Registry Module
+//!
+//! This module provides the operator registry for ZiOrbit, managing the registration
+//! and lookup of operator factories at runtime.
+//!
+//! ## Registry Operations
+//!
+//! - Register operator factories with unique names
+//! - Query available operators
+//! - Create operator instances from configuration
+
 use std::collections::HashMap;
 
 use serde_json::Value;
 
 use crate::errors::{Result, ZiError};
-use crate::operator::ZiCOperator;
+use crate::operator::ZiOperator;
 
 /// Type alias for an operator factory used by ZiOrbit. Given a JSON config
 /// value, it returns a boxed operator ready to be applied to a record batch.
-pub type ZiFOperatorFactory = fn(&Value) -> Result<Box<dyn ZiCOperator + Send + Sync>>;
+pub type OperatorFactory = fn(&Value) -> Result<Box<dyn ZiOperator + Send + Sync>>;
 
 /// Registry mapping operator names to their factory functions.
 #[derive(Debug, Default)]
-pub struct ZiCOperatorRegistry {
-    inner: HashMap<String, ZiFOperatorFactory>,
+pub struct ZiOperatorRegistry {
+    inner: HashMap<String, OperatorFactory>,
 }
 
-impl ZiCOperatorRegistry {
+impl ZiOperatorRegistry {
     #[allow(non_snake_case)]
-    pub fn ZiFNew() -> Self {
-        ZiCOperatorRegistry {
+    pub fn new() -> Self {
+        ZiOperatorRegistry {
             inner: HashMap::new(),
         }
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFRegister(&mut self, name: &str, factory: ZiFOperatorFactory) {
+    pub fn register(&mut self, name: &str, factory: OperatorFactory) {
         self.inner.insert(name.to_string(), factory);
     }
 
-    pub fn ZiFGet(&self, name: &str) -> Result<ZiFOperatorFactory> {
+    pub fn get(&self, name: &str) -> Result<OperatorFactory> {
         self.inner
             .get(name)
             .copied()

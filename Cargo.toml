@@ -16,16 +16,17 @@
 # limitations under the License.
 
 [package]
-name = "Zi"
+name = "Zix"
 version = "0.1.0"
 edition = "2021"
 description = "Unified Data Quality Assessment, Cleaning, Transformation, Sampling, and Augmentation Framework"
 license = "Apache-2.0"
 
 [lib]
-name = "Zi"
+name = "zix"
 path = "src/lib.rs"
 doctest = false
+crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["full"]
@@ -39,6 +40,7 @@ plugin = ["wasmtime"]
 pyo3 = ["dep:pyo3", "pyo3/extension-module"]
 compression = ["dep:flate2", "dep:zstd"]
 edge = []
+embedding = ["dep:fastembed"]
 
 [dependencies]
 # DMSC Infrastructure
@@ -95,9 +97,42 @@ hex = "0.4"
 libc = "0.2"
 
 # Python Bindings
-pyo3 = { version = "0.27", optional = true }
+pyo3 = { version = "0.27", optional = true, features = ["extension-module"] }
+
+# Tokenization
+tiktoken-rs = "0.6"
+
+# HTTP Client for LLM integration
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+
+# Embeddings (optional)
+fastembed = { version = "4", optional = true }
 
 [dev-dependencies]
 tempfile = "3.10"
 criterion = { version = "0.5", features = ["html_reports"] }
 proptest = "1.4"
+
+[[test]]
+name = "dag"
+path = "tests/rust/core/dag.rs"
+
+[[test]]
+name = "filter"
+path = "tests/rust/operators/filter.rs"
+
+[[test]]
+name = "augment"
+path = "tests/rust/operators/augment.rs"
+
+[[test]]
+name = "sample"
+path = "tests/rust/operators/sample.rs"
+
+[[test]]
+name = "transform"
+path = "tests/rust/operators/transform.rs"
+
+[[test]]
+name = "plugin"
+path = "tests/rust/orbit/plugin.rs"

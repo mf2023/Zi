@@ -19,19 +19,19 @@ use serde_json::{Number, Value};
 use std::collections::HashMap;
 
 use crate::errors::{Result, ZiError};
-use crate::operator::ZiCOperator;
-use crate::operators::filter::ZiCFieldPath;
-use crate::record::ZiCRecordBatch;
+use crate::operator::ZiOperator;
+use crate::operators::filter::ZiFieldPath;
+use crate::record::ZiRecordBatch;
 
 #[derive(Debug)]
-pub struct ZiCLangDetect {
-    path: ZiCFieldPath,
+pub struct ZiLangDetect {
+    path: ZiFieldPath,
     target_key: String,
 }
 
-impl ZiCLangDetect {
+impl ZiLangDetect {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, target_key: String) -> Self {
+    pub fn new(path: ZiFieldPath, target_key: String) -> Self {
         Self { path, target_key }
     }
 
@@ -281,17 +281,17 @@ fn script_counts(text: &str) -> (usize, usize, usize, usize, usize, usize) {
     (latin, cjk, arabic, cyrillic, devanagari, total)
 }
 
-impl ZiCOperator for ZiCLangDetect {
+impl ZiOperator for ZiLangDetect {
     fn name(&self) -> &'static str {
         "lang.detect"
     }
 
-    fn apply(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, mut batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         for record in &mut batch {
-            if let Some(Value::String(text)) = self.path.ZiFResolve(record) {
+            if let Some(Value::String(text)) = self.path.resolve(record) {
                 let iso = Self::detect_iso(text);
                 record
-                    .ZiFMetadataMut()
+                    .metadata_mut()
                     .insert(self.target_key.clone(), Value::String(iso.to_string()));
             }
         }
@@ -300,7 +300,7 @@ impl ZiCOperator for ZiCLangDetect {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFLangDetectFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn lang_detect_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("lang.detect config must be object"))?;
@@ -313,31 +313,31 @@ pub fn ZiFLangDetectFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send
         .and_then(Value::as_str)
         .unwrap_or("lang")
         .to_string();
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
-    Ok(Box::new(ZiCLangDetect::ZiFNew(field_path, key)))
+    let field_path = ZiFieldPath::parse(path)?;
+    Ok(Box::new(ZiLangDetect::new(field_path, key)))
 }
 
 #[derive(Debug)]
-pub struct ZiCLangConfidence {
-    path: ZiCFieldPath,
+pub struct ZiLangConfidence {
+    path: ZiFieldPath,
     target_key: String,
 }
 
-impl ZiCLangConfidence {
+impl ZiLangConfidence {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, target_key: String) -> Self {
+    pub fn new(path: ZiFieldPath, target_key: String) -> Self {
         Self { path, target_key }
     }
 }
 
-impl ZiCOperator for ZiCLangConfidence {
+impl ZiOperator for ZiLangConfidence {
     fn name(&self) -> &'static str {
         "lang.confidence"
     }
 
-    fn apply(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, mut batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         for record in &mut batch {
-            if let Some(Value::String(text)) = self.path.ZiFResolve(record) {
+            if let Some(Value::String(text)) = self.path.resolve(record) {
                 let (latin, cjk, arabic, cyrillic, devanagari, total) = script_counts(text);
                 if total == 0 {
                     continue;
@@ -346,7 +346,7 @@ impl ZiCOperator for ZiCLangConfidence {
                 let confidence = (dominant / total as f64).clamp(0.0, 1.0);
                 let number = Number::from_f64(confidence).unwrap_or_else(|| Number::from(0));
                 record
-                    .ZiFMetadataMut()
+                    .metadata_mut()
                     .insert(self.target_key.clone(), Value::Number(number));
             }
         }
@@ -355,7 +355,7 @@ impl ZiCOperator for ZiCLangConfidence {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFLangConfidenceFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn lang_confidence_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("lang.confidence config must be object"))?;
@@ -370,7 +370,7 @@ pub fn ZiFLangConfidenceFactory(config: &Value) -> Result<Box<dyn ZiCOperator + 
         .unwrap_or("lang_confidence")
         .to_string();
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
-    Ok(Box::new(ZiCLangConfidence::ZiFNew(field_path, key)))
+    let field_path = ZiFieldPath::parse(path)?;
+    Ok(Box::new(ZiLangConfidence::new(field_path, key)))
 }
 

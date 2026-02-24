@@ -1,0 +1,139 @@
+//! Copyright © 2025-2026 Wenze Wei. All Rights Reserved.
+//!
+//! This file is part of Zi.
+//! The Zi project belongs to the Dunimd project team.
+
+//! Comprehensive test suite for all core functionality in Zi framework.
+
+use zix::{ZiRecord, ZiDAG, ZiGraphNode, ZiNodeId, ZiGraphNodeConfig};
+use serde_json::json;
+
+#[test]
+fn test_record_creation() {
+    let record = ZiRecord::new(Some("1".into()), json!({"text": "hello"}));
+    assert_eq!(record.id, Some("1".into()));
+    assert_eq!(record.payload["text"], "hello");
+}
+
+#[test]
+fn test_record_with_metadata() {
+    let mut record = ZiRecord::new(Some("1".into()), json!({"text": "hello"}));
+    record.metadata = Some(serde_json::Map::new());
+    record.metadata_mut().insert("score".into(), json!(0.9));
+    assert_eq!(record.metadata.as_ref().unwrap()["score"], 0.9);
+}
+
+#[test]
+fn test_record_batch_creation() {
+    let records = vec![
+        ZiRecord::new(Some("1".into()), json!({"text": "hello"})),
+        ZiRecord::new(Some("2".into()), json!({"text": "world"})),
+    ];
+    assert_eq!(records.len(), 2);
+}
+
+#[test]
+fn test_dag_topological_sort() {
+    let mut dag = ZiDAG::new();
+
+    dag.add_node(ZiGraphNode::new(
+        ZiNodeId::from("a"),
+        ZiGraphNodeConfig {
+            name: "a".to_string(),
+            operator: "test".to_string(),
+            config: serde_json::json!({}),
+            parallel: false,
+            cache: false,
+        },
+    )).unwrap();
+
+    dag.add_node(ZiGraphNode::new(
+        ZiNodeId::from("b"),
+        ZiGraphNodeConfig {
+            name: "b".to_string(),
+            operator: "test".to_string(),
+            config: serde_json::json!({}),
+            parallel: false,
+            cache: false,
+        },
+    )).unwrap();
+
+    dag.add_node(ZiGraphNode::new(
+        ZiNodeId::from("c"),
+        ZiGraphNodeConfig {
+            name: "c".to_string(),
+            operator: "test".to_string(),
+            config: serde_json::json!({}),
+            parallel: false,
+            cache: false,
+        },
+    )).unwrap();
+
+    dag.add_edge(ZiNodeId::from("a"), ZiNodeId::from("c")).unwrap();
+    dag.add_edge(ZiNodeId::from("b"), ZiNodeId::from("c")).unwrap();
+
+    let sorted = dag.topological_sort().unwrap();
+    assert!(sorted.len() == 3);
+}
+
+#[test]
+fn test_dag_cycle_detection() {
+    let mut dag = ZiDAG::new();
+
+    dag.add_node(ZiGraphNode::new(
+        ZiNodeId::from("a"),
+        ZiGraphNodeConfig {
+            name: "a".to_string(),
+            operator: "test".to_string(),
+            config: serde_json::json!({}),
+            parallel: false,
+            cache: false,
+        },
+    )).unwrap();
+
+    dag.add_node(ZiGraphNode::new(
+        ZiNodeId::from("b"),
+        ZiGraphNodeConfig {
+            name: "b".to_string(),
+            operator: "test".to_string(),
+            config: serde_json::json!({}),
+            parallel: false,
+            cache: false,
+        },
+    )).unwrap();
+
+    dag.add_edge(ZiNodeId::from("a"), ZiNodeId::from("b")).unwrap();
+    dag.add_edge(ZiNodeId::from("b"), ZiNodeId::from("a")).unwrap();
+
+    assert!(dag.topological_sort().is_err());
+}
+
+#[test]
+fn test_record_id_options() {
+    let record_with_id = ZiRecord::new(Some("test_id".to_string()), json!({"data": 1}));
+    let record_without_id = ZiRecord::new(None::<String>, json!({"data": 2}));
+    
+    assert!(record_with_id.id.is_some());
+    assert!(record_without_id.id.is_none());
+}
+
+#[test]
+fn test_record_payload_access() {
+    let record = ZiRecord::new(Some("1".into()), json!({
+        "name": "test",
+        "value": 42,
+        "nested": {"a": 1, "b": 2}
+    }));
+    
+    assert_eq!(record.payload["name"], "test");
+    assert_eq!(record.payload["value"], 42);
+    assert_eq!(record.payload["nested"]["a"], 1);
+}
+
+#[test]
+fn test_record_clone() {
+    let record1 = ZiRecord::new(Some("1".into()), json!({"text": "hello"}));
+    let record2 = record1.clone();
+    assert_eq!(record1.id, record2.id);
+    assert_eq!(record1.payload, record2.payload);
+}

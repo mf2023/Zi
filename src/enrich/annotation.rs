@@ -15,71 +15,86 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # Data Annotation Module
+//!
+//! This module provides annotation capabilities for adding metadata labels, scores,
+//! and tags to data records.
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::errors::Result;
-use crate::record::{ZiCRecord, ZiCRecordBatch};
+use crate::record::{ZiRecord, ZiRecordBatch};
 
+/// Configuration for data annotation.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ZiCAnnotationConfig {
+pub struct ZiAnnotationConfig {
+    /// Target field path for annotation.
     pub field: String,
-    pub annotation_type: ZiCAnnotationType,
+    /// Type of annotation to generate.
+    pub annotation_type: ZiAnnotationType,
 }
 
+/// Types of annotations supported.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ZiCAnnotationType {
+pub enum ZiAnnotationType {
+    /// Categorical label annotation.
     Label { name: String },
+    /// Numerical score annotation.
     Score { name: String },
+    /// Multi-label tag annotation.
     Tag { name: String },
 }
 
-impl Default for ZiCAnnotationConfig {
+impl Default for ZiAnnotationConfig {
     fn default() -> Self {
         Self {
             field: "payload".to_string(),
-            annotation_type: ZiCAnnotationType::Label { name: "default".to_string() },
+            annotation_type: ZiAnnotationType::Label { name: "default".to_string() },
         }
     }
 }
 
+/// Annotator for adding metadata annotations to records.
 #[derive(Debug)]
-pub struct ZiCAnnotator {
-    config: ZiCAnnotationConfig,
+pub struct ZiAnnotator {
+    config: ZiAnnotationConfig,
 }
 
-impl ZiCAnnotator {
+impl ZiAnnotator {
+    /// Creates a new annotator with the given configuration.
     #[allow(non_snake_case)]
-    pub fn ZiFNew(config: ZiCAnnotationConfig) -> Self {
+    pub fn new(config: ZiAnnotationConfig) -> Self {
         Self { config }
     }
 
+    /// Annotates all records in a batch.
     #[allow(non_snake_case)]
-    pub fn ZiFAnnotate(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    pub fn annotate(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         batch.into_iter().map(|record| self.annotate_record(record)).collect()
     }
 
-    fn annotate_record(&self, mut record: ZiCRecord) -> Result<ZiCRecord> {
+    fn annotate_record(&self, mut record: ZiRecord) -> Result<ZiRecord> {
         let annotation_key = match &self.config.annotation_type {
-            ZiCAnnotationType::Label { name } => format!("label_{}", name),
-            ZiCAnnotationType::Score { name } => format!("score_{}", name),
-            ZiCAnnotationType::Tag { name } => format!("tag_{}", name),
+            ZiAnnotationType::Label { name } => format!("label_{}", name),
+            ZiAnnotationType::Score { name } => format!("score_{}", name),
+            ZiAnnotationType::Tag { name } => format!("tag_{}", name),
         };
 
         let annotation_value = self.compute_annotation(&record);
 
-        record.ZiFMetadataMut()
+        record.metadata_mut()
             .insert(annotation_key, annotation_value);
 
         Ok(record)
     }
 
-    fn compute_annotation(&self, record: &ZiCRecord) -> Value {
+    fn compute_annotation(&self, record: &ZiRecord) -> Value {
         match &self.config.annotation_type {
-            ZiCAnnotationType::Label { name } => {
+            ZiAnnotationType::Label { name } => {
                 Value::String(format!("{}_auto", name))
             }
-            ZiCAnnotationType::Score { .. } => {
+            ZiAnnotationType::Score { .. } => {
                 let text = match &record.payload {
                     Value::String(s) => s.clone(),
                     Value::Object(map) => {
@@ -94,7 +109,7 @@ impl ZiCAnnotator {
                 let score = (text.len() as f64 / 1000.0).min(1.0);
                 Value::Number(serde_json::Number::from_f64(score).unwrap_or_else(|| serde_json::Number::from(0)))
             }
-            ZiCAnnotationType::Tag { name } => {
+            ZiAnnotationType::Tag { name } => {
                 Value::Array(vec![Value::String(format!("{}_tagged", name))])
             }
         }

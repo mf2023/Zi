@@ -69,6 +69,8 @@ Zi adopts a modular architecture optimized for LLM data processing workflows:
 - Metadata enrichment and manipulation
 - PII redaction with custom patterns
 - Text normalization and standardization
+- Field operations (select, rename, drop, copy, move, flatten)
+- Template-based value rendering
 
 #### 📝 Deduplication
 - SimHash-based near-duplicate detection
@@ -93,11 +95,18 @@ Zi adopts a modular architecture optimized for LLM data processing workflows:
 - Data Profile (field statistics, frequency distribution, anomaly detection)
 - Dataset Diff (record-level, field-level comparison)
 - Text statistics (word frequency, N-gram)
+- Distribution analysis (histogram, percentiles, correlation)
 
 #### ✨ Data Augmentation
 - Template-based data synthesis
 - Rule-driven data generation (random, UUID, Faker)
 - LLM-assisted synthesis interface
+
+#### 📦 Dataset Operations
+- Dataset merging (concat, union, intersect, difference, zip)
+- Dataset splitting (random, stratified, sequential, k-fold, chunk)
+- Balanced sampling (undersample, oversample, hybrid)
+- Data shuffling (Fisher-Yates, block, stratified, window)
 
 <h2 align="center">⚡ Quick Start</h2>
 
@@ -105,12 +114,11 @@ Zi adopts a modular architecture optimized for LLM data processing workflows:
 
 ```rust
 use serde_json::json;
-use Zi::pipeline::ZiCPipelineBuilder;
-use Zi::record::ZiCRecord;
+use zix::{ZiPipelineBuilder, ZiRecord};
 
 let records = vec![
-    ZiCRecord::ZiFNew(Some("1".into()), json!({"text": "Hello world"})),
-    ZiCRecord::ZiFNew(Some("2".into()), json!({"text": "你好世界"})),
+    ZiRecord::new(Some("1".into()), json!({"text": "Hello world"})),
+    ZiRecord::new(Some("2".into()), json!({"text": "你好世界"})),
 ];
 
 let steps = [
@@ -120,7 +128,7 @@ let steps = [
     json!({"operator": "quality.filter", "config": {"min": 0.5}}),
 ];
 
-let pipeline = ZiCPipelineBuilder::with_defaults()
+let pipeline = ZiPipelineBuilder::with_defaults()
     .build_from_config(&steps)
     .expect("valid pipeline");
 
@@ -130,30 +138,28 @@ let result = pipeline.run(records).expect("execution succeeds");
 ### Data Ingestion & Export
 
 ```rust
-use Zi::ingest::{ZiCStreamReader, ZiCReaderConfig};
-use Zi::export::{ZiCStreamWriter, ZiCWriterConfig, ZiCOutputFormat};
+use zix::ingest::{ZiStreamReader, ZiReaderConfig};
+use zix::export::{ZiStreamWriter, ZiWriterConfig, ZiOutputFormat};
 use std::path::Path;
 
 // Read data
-let reader = ZiCStreamReader::ZiFNew()
-    .ZiFWithConfig(ZiCReaderConfig {
-        batch_size: 10000,
-        skip_errors: true,
-        ..Default::default()
-    });
-
-let batch = reader.ZiFReadPath(Path::new("data.jsonl"))?;
-
-// Export data
-let mut writer = ZiCStreamWriter::ZiFNew();
-let config = ZiCWriterConfig {
-    format: ZiCOutputFormat::Jsonl,
-    compression: ZiCCompression::Gzip,
-    split_by_count: Some(100000),
+let config = ZiReaderConfig {
+    path: "data.jsonl".to_string(),
+    batch_size: 10000,
     ..Default::default()
 };
+let reader = ZiStreamReader::new(config)?;
+let batch = reader.read_all()?;
 
-let stats = writer.ZiFWrite(&batch, Path::new("output.jsonl.gz"))?;
+// Export data
+let config = ZiWriterConfig {
+    path: "output.jsonl".to_string(),
+    format: ZiOutputFormat::Jsonl,
+    batch_size: 1000,
+    ..Default::default()
+};
+let writer = ZiStreamWriter::new(config);
+let stats = writer.write(&batch)?;
 ```
 
 ### DSL Configuration
@@ -186,15 +192,15 @@ steps:
 ```
 
 ```rust
-use Zi::dsl::{ZiCDSLParser, ZiCDSLCompiler};
+use zix::dsl::{ZiDSLParser, ZiDSLCompiler};
 
-let parser = ZiCDSLParser::ZiFNew();
-let result = parser.ZiFParseFile(Path::new("pipeline.yaml"))?;
+let parser = ZiDSLParser::new();
+let result = parser.parse_file(Path::new("pipeline.yaml"))?;
 
-let compiler = ZiCDSLCompiler::ZiFNew();
-let pipeline = compiler.ZiFCompile(&result.program)?;
+let compiler = ZiDSLCompiler::new();
+let pipeline = compiler.compile(&result.program)?;
 
-let output = pipeline.ZiFRun(batch)?;
+let output = pipeline.run(batch)?;
 ```
 
 <h2 align="center">🔧 Configuration</h2>
@@ -278,7 +284,7 @@ cargo bench
 Dynamic operator loading via shared libraries:
 
 ```rust
-let mut builder = ZiCPipelineBuilder::with_defaults();
+let mut builder = ZiPipelineBuilder::with_defaults();
 builder.load_plugin("path/to/plugin.so")?;
 ```
 
@@ -332,31 +338,106 @@ This enables precise data lineage tracking and exact result reproduction.
 | `llm.qa_extract` | QA pair extraction |
 | `llm.instruction_format` | Instruction formatting |
 
+### Merge Operators (merge.*)
+| Operator | Description |
+|:---------|:------------|
+| `merge.concat` | Concatenate datasets |
+| `merge.batch` | Batch merge records |
+| `merge.union` | Union with deduplication |
+| `merge.intersect` | Intersection of datasets |
+| `merge.difference` | Difference of datasets |
+| `merge.zip` | Zip merge fields |
+
+### Split Operators (split.*)
+| Operator | Description |
+|:---------|:------------|
+| `split.random` | Random split (train/valid/test) |
+| `split.stratified` | Stratified split |
+| `split.sequential` | Sequential split |
+| `split.kfold` | K-fold split |
+| `split.chunk` | Chunk split |
+
+### Token Operators (token.*)
+| Operator | Description |
+|:---------|:------------|
+| `token.count` | Token count per record |
+| `token.stats` | Token statistics |
+| `token.filter` | Filter by token count |
+| `token.histogram` | Token distribution histogram |
+
+### Field Operators (field.*)
+| Operator | Description |
+|:---------|:------------|
+| `field.select` | Select fields |
+| `field.rename` | Rename fields |
+| `field.drop` | Drop fields |
+| `field.copy` | Copy field |
+| `field.move` | Move field |
+| `field.flatten` | Flatten nested fields |
+| `field.default` | Set default value |
+| `field.require` | Require fields |
+
+### Transform Operators (transform.*)
+| Operator | Description |
+|:---------|:------------|
+| `transform.normalize` | Text normalization |
+| `transform.map` | Field value mapping |
+| `transform.template` | Template rendering |
+| `transform.chain` | Chain transforms |
+| `transform.flat_map` | Flatten and map |
+| `transform.coalesce` | Coalesce values |
+| `transform.conditional` | Conditional transform |
+
+### Sample Operators (sample.*)
+| Operator | Description |
+|:---------|:------------|
+| `sample.random` | Random sampling |
+| `sample.top` | Top-K sampling |
+| `sample.balanced` | Balanced sampling |
+| `sample.by_distribution` | Distribution-based sampling |
+| `sample.by_length` | Length-based sampling |
+| `sample.stratified` | Stratified sampling |
+
+### Shuffle Operators (shuffle.*)
+| Operator | Description |
+|:---------|:------------|
+| `shuffle` | Random shuffle |
+| `shuffle.deterministic` | Deterministic shuffle |
+| `shuffle.block` | Block shuffle |
+| `shuffle.stratified` | Stratified shuffle |
+| `shuffle.window` | Window shuffle |
+
+### Distribution Operators (distribution.*)
+| Operator | Description |
+|:---------|:------------|
+| `distribution.analyze` | Field distribution analysis |
+| `distribution.report` | Distribution report |
+| `distribution.correlation` | Correlation analysis |
+
 ### Other Operators
 | Operator | Description |
 |:---------|:------------|
 | `lang.detect` | Language detection |
 | `metadata.enrich` | Metadata enrichment |
 | `limit` | Record count limit |
-| `sample.random` | Random sampling |
 | `pii.redact` | PII redaction |
 
 <h2 align="center">❓ Frequently Asked Questions</h2>
 
 **Q: How to add a new operator?**
-A: Implement the `ZiCOperator` trait and register it via the operator registry.
+A: Implement the `ZiOperator` trait and register it via the operator registry.
 
 **Q: How to enable parallel execution?**
 A: Enable the `parallel` feature flag and configure DAG scheduler for parallel execution.
 
 **Q: How to handle large files?**
-A: Use `ZiCRecordIterator` for streaming batch processing.
+A: Use `ZiRecordIterator` for streaming batch processing.
 
 **Q: How to use DSL configuration?**
-A: Use `ZiCDSLParser` to parse YAML/JSON configuration files.
+A: Use `ZiDSLParser` to parse YAML/JSON configuration files.
 
 **Q: How to track data lineage?**
-A: Use `ZiCManifest` and `ZiCLineage` to record processing history.
+A: Use `ZiManifest` and `ZiLineage` to record processing history.
 
 <h2 align="center">🌏 Community</h2>
 

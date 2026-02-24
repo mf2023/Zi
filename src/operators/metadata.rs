@@ -18,30 +18,30 @@
 use serde_json::Value;
 
 use crate::errors::{Result, ZiError};
-use crate::operator::ZiCOperator;
-use crate::record::ZiCRecordBatch;
+use crate::operator::ZiOperator;
+use crate::record::ZiRecordBatch;
 
 /// Adds metadata key/values to every record in the batch.
 #[derive(Debug)]
-pub struct ZiCMetadataEnrich {
+pub struct ZiMetadataEnrich {
     entries: Vec<(String, Value)>,
 }
 
-impl ZiCMetadataEnrich {
+impl ZiMetadataEnrich {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(entries: Vec<(String, Value)>) -> Self {
+    pub fn new(entries: Vec<(String, Value)>) -> Self {
         Self { entries }
     }
 }
 
-impl ZiCOperator for ZiCMetadataEnrich {
+impl ZiOperator for ZiMetadataEnrich {
     fn name(&self) -> &'static str {
         "metadata.enrich"
     }
 
-    fn apply(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, mut batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         for record in &mut batch {
-            let metadata = record.ZiFMetadataMut();
+            let metadata = record.metadata_mut();
             for (key, value) in &self.entries {
                 metadata.insert(key.clone(), value.clone());
             }
@@ -51,7 +51,7 @@ impl ZiCOperator for ZiCMetadataEnrich {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFMetadataEnrichFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn metadata_enrich_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("metadata.enrich config must be object"))?;
@@ -64,28 +64,28 @@ pub fn ZiFMetadataEnrichFactory(config: &Value) -> Result<Box<dyn ZiCOperator + 
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect();
 
-    Ok(Box::new(ZiCMetadataEnrich::ZiFNew(entries)))
+    Ok(Box::new(ZiMetadataEnrich::new(entries)))
 }
 
 /// Removes metadata keys from every record in the batch.
 #[derive(Debug)]
-pub struct ZiCMetadataRemove {
+pub struct ZiMetadataRemove {
     keys: Vec<String>,
 }
 
-impl ZiCMetadataRemove {
+impl ZiMetadataRemove {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(keys: Vec<String>) -> Self {
+    pub fn new(keys: Vec<String>) -> Self {
         Self { keys }
     }
 }
 
-impl ZiCOperator for ZiCMetadataRemove {
+impl ZiOperator for ZiMetadataRemove {
     fn name(&self) -> &'static str {
         "metadata.remove"
     }
 
-    fn apply(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, mut batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         if self.keys.is_empty() {
             return Ok(batch);
         }
@@ -110,7 +110,7 @@ impl ZiCOperator for ZiCMetadataRemove {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFMetadataRemoveFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn metadata_remove_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("metadata.remove config must be object"))?;
@@ -129,28 +129,28 @@ pub fn ZiFMetadataRemoveFactory(config: &Value) -> Result<Box<dyn ZiCOperator + 
         })
         .collect::<Result<Vec<String>>>()?;
 
-    Ok(Box::new(ZiCMetadataRemove::ZiFNew(keys)))
+    Ok(Box::new(ZiMetadataRemove::new(keys)))
 }
 
 /// Keeps only the specified metadata keys, dropping others.
 #[derive(Debug)]
-pub struct ZiCMetadataKeep {
+pub struct ZiMetadataKeep {
     keys: Vec<String>,
 }
 
-impl ZiCMetadataKeep {
+impl ZiMetadataKeep {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(keys: Vec<String>) -> Self {
+    pub fn new(keys: Vec<String>) -> Self {
         Self { keys }
     }
 }
 
-impl ZiCOperator for ZiCMetadataKeep {
+impl ZiOperator for ZiMetadataKeep {
     fn name(&self) -> &'static str {
         "metadata.keep"
     }
 
-    fn apply(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, mut batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         if self.keys.is_empty() {
             return Ok(batch);
         }
@@ -169,7 +169,7 @@ impl ZiCOperator for ZiCMetadataKeep {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFMetadataKeepFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn metadata_keep_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("metadata.keep config must be object"))?;
@@ -193,28 +193,28 @@ pub fn ZiFMetadataKeepFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Se
         return Err(ZiError::validation("metadata.keep 'keys' may not be empty"));
     }
 
-    Ok(Box::new(ZiCMetadataKeep::ZiFNew(keys)))
+    Ok(Box::new(ZiMetadataKeep::new(keys)))
 }
 
 /// Renames metadata keys using a provided mapping.
 #[derive(Debug)]
-pub struct ZiCMetadataRename {
+pub struct ZiMetadataRename {
     mappings: Vec<(String, String)>,
 }
 
-impl ZiCMetadataRename {
+impl ZiMetadataRename {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(mappings: Vec<(String, String)>) -> Self {
+    pub fn new(mappings: Vec<(String, String)>) -> Self {
         Self { mappings }
     }
 }
 
-impl ZiCOperator for ZiCMetadataRename {
+impl ZiOperator for ZiMetadataRename {
     fn name(&self) -> &'static str {
         "metadata.rename"
     }
 
-    fn apply(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, mut batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         if self.mappings.is_empty() {
             return Ok(batch);
         }
@@ -224,7 +224,7 @@ impl ZiCOperator for ZiCMetadataRename {
                 continue;
             }
 
-            let metadata = record.ZiFMetadataMut();
+            let metadata = record.metadata_mut();
             let mut additions = Vec::new();
 
             for (from, to) in &self.mappings {
@@ -247,7 +247,7 @@ impl ZiCOperator for ZiCMetadataRename {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFMetadataRenameFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn metadata_rename_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("metadata.rename config must be object"))?;
@@ -277,28 +277,28 @@ pub fn ZiFMetadataRenameFactory(config: &Value) -> Result<Box<dyn ZiCOperator + 
         })
         .collect::<Result<Vec<(String, String)>>>()?;
 
-    Ok(Box::new(ZiCMetadataRename::ZiFNew(mappings)))
+    Ok(Box::new(ZiMetadataRename::new(mappings)))
 }
 
 /// Copies metadata keys to new targets without removing the originals.
 #[derive(Debug)]
-pub struct ZiCMetadataCopy {
+pub struct ZiMetadataCopy {
     mappings: Vec<(String, String)>,
 }
 
-impl ZiCMetadataCopy {
+impl ZiMetadataCopy {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(mappings: Vec<(String, String)>) -> Self {
+    pub fn new(mappings: Vec<(String, String)>) -> Self {
         Self { mappings }
     }
 }
 
-impl ZiCOperator for ZiCMetadataCopy {
+impl ZiOperator for ZiMetadataCopy {
     fn name(&self) -> &'static str {
         "metadata.copy"
     }
 
-    fn apply(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, mut batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         if self.mappings.is_empty() {
             return Ok(batch);
         }
@@ -319,7 +319,7 @@ impl ZiCOperator for ZiCMetadataCopy {
                 continue;
             }
 
-            let metadata = record.ZiFMetadataMut();
+            let metadata = record.metadata_mut();
             for (to, value) in additions {
                 metadata.insert(to, value);
             }
@@ -330,7 +330,7 @@ impl ZiCOperator for ZiCMetadataCopy {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFMetadataCopyFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn metadata_copy_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("metadata.copy config must be object"))?;
@@ -358,28 +358,28 @@ pub fn ZiFMetadataCopyFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Se
         })
         .collect::<Result<Vec<(String, String)>>>()?;
 
-    Ok(Box::new(ZiCMetadataCopy::ZiFNew(mappings)))
+    Ok(Box::new(ZiMetadataCopy::new(mappings)))
 }
 
 /// Validates that specified metadata keys exist on every record.
 #[derive(Debug)]
-pub struct ZiCMetadataRequire {
+pub struct ZiMetadataRequire {
     required: Vec<String>,
 }
 
-impl ZiCMetadataRequire {
+impl ZiMetadataRequire {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(required: Vec<String>) -> Self {
+    pub fn new(required: Vec<String>) -> Self {
         Self { required }
     }
 }
 
-impl ZiCOperator for ZiCMetadataRequire {
+impl ZiOperator for ZiMetadataRequire {
     fn name(&self) -> &'static str {
         "metadata.require"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         if self.required.is_empty() {
             return Ok(batch);
         }
@@ -405,7 +405,7 @@ impl ZiCOperator for ZiCMetadataRequire {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFMetadataRequireFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn metadata_require_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("metadata.require config must be object"))?;
@@ -430,20 +430,20 @@ pub fn ZiFMetadataRequireFactory(config: &Value) -> Result<Box<dyn ZiCOperator +
         ));
     }
 
-    Ok(Box::new(ZiCMetadataRequire::ZiFNew(required)))
+    Ok(Box::new(ZiMetadataRequire::new(required)))
 }
 
 /// Copies values from payload paths into metadata keys.
 #[derive(Debug)]
-pub struct ZiCMetadataExtract {
-    mappings: Vec<ZiCExtractionRule>,
+pub struct ZiMetadataExtract {
+    mappings: Vec<ZiExtractionRule>,
 }
 
 /// Represents a single extraction rule for `metadata.extract`.
 ///
 /// This struct is used to configure the `metadata.extract` operator.
 #[derive(Debug, Clone)]
-pub struct ZiCExtractionRule {
+pub struct ZiExtractionRule {
     /// The path segments to extract from the payload.
     ///
     /// The path must start with "payload" and reference a valid field.
@@ -462,14 +462,14 @@ pub struct ZiCExtractionRule {
     pub capture_index: Option<usize>,
 }
 
-impl ZiCMetadataExtract {
+impl ZiMetadataExtract {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(mappings: Vec<ZiCExtractionRule>) -> Self {
+    pub fn new(mappings: Vec<ZiExtractionRule>) -> Self {
         Self { mappings }
     }
 
     #[allow(non_snake_case)]
-    fn ZiFResolvePath<'a>(value: &'a Value, segments: &[String]) -> Option<&'a Value> {
+    fn resolve_path<'a>(value: &'a Value, segments: &[String]) -> Option<&'a Value> {
         let mut current = value;
         for segment in segments {
             match current {
@@ -481,12 +481,12 @@ impl ZiCMetadataExtract {
     }
 }
 
-impl ZiCOperator for ZiCMetadataExtract {
+impl ZiOperator for ZiMetadataExtract {
     fn name(&self) -> &'static str {
         "metadata.extract"
     }
 
-    fn apply(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, mut batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         if self.mappings.is_empty() {
             return Ok(batch);
         }
@@ -494,11 +494,11 @@ impl ZiCOperator for ZiCMetadataExtract {
         for (index, record) in batch.iter_mut().enumerate() {
             for rule in &self.mappings {
                 let Some(raw_value) =
-                    ZiCMetadataExtract::ZiFResolvePath(&record.payload, &rule.path_segments)
+                    ZiMetadataExtract::resolve_path(&record.payload, &rule.path_segments)
                 else {
                     if let Some(default) = &rule.default_value {
                         record
-                            .ZiFMetadataMut()
+                            .metadata_mut()
                             .insert(rule.target_key.clone(), default.clone());
                         continue;
                     }
@@ -545,7 +545,7 @@ impl ZiCOperator for ZiCMetadataExtract {
                 };
 
                 record
-                    .ZiFMetadataMut()
+                    .metadata_mut()
                     .insert(rule.target_key.clone(), extracted);
             }
         }
@@ -555,7 +555,7 @@ impl ZiCOperator for ZiCMetadataExtract {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFMetadataExtractFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn metadata_extract_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("metadata.extract config must be object"))?;
@@ -625,7 +625,7 @@ pub fn ZiFMetadataExtractFactory(config: &Value) -> Result<Box<dyn ZiCOperator +
             ));
         }
 
-        let rule = ZiCExtractionRule {
+        let rule = ZiExtractionRule {
             path_segments: segments[1..].to_vec(),
             target_key,
             default_value,
@@ -636,5 +636,5 @@ pub fn ZiFMetadataExtractFactory(config: &Value) -> Result<Box<dyn ZiCOperator +
         mappings.push(rule);
     }
 
-    Ok(Box::new(ZiCMetadataExtract::ZiFNew(mappings)))
+    Ok(Box::new(ZiMetadataExtract::new(mappings)))
 }

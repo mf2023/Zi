@@ -1,4 +1,4 @@
-//! Copyright 2025 Dunimd Team. All Rights Reserved.
+//! Copyright © 2025-2026 Wenze Wei. All Rights Reserved.
 //!
 //! This file is part of Zi.
 //! The Zi project belongs to the Dunimd project team.
@@ -18,9 +18,9 @@
 use serde_json::{Map, Value};
 
 use crate::errors::{Result, ZiError};
-use crate::operator::ZiCOperator;
-use crate::operators::filter::ZiCFieldPath;
-use crate::record::ZiCRecordBatch;
+use crate::operator::ZiOperator;
+use crate::operators::filter::ZiFieldPath;
+use crate::record::ZiRecordBatch;
 
 #[allow(non_snake_case)]
 fn _ZiFJsonNumber(value: f64) -> Value {
@@ -471,16 +471,16 @@ impl _ZiCQualityScoreComponents {
 }
 
 #[derive(Debug)]
-pub struct ZiCQualityScore {
-    path: ZiCFieldPath,
+pub struct ZiQualityScore {
+    path: ZiFieldPath,
     target_key: String,
     details_key: Option<String>,
     weights: _ZiCQualityScoreWeights,
 }
 
-impl ZiCQualityScore {
+impl ZiQualityScore {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(path: ZiCFieldPath, target_key: String) -> Self {
+    pub fn new(path: ZiFieldPath, target_key: String) -> Self {
         Self {
             path,
             target_key,
@@ -490,38 +490,38 @@ impl ZiCQualityScore {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFWithDetails(mut self, details_key: Option<String>) -> Self {
+    pub fn with_details(mut self, details_key: Option<String>) -> Self {
         self.details_key = details_key;
         self
     }
 
     #[allow(non_snake_case)]
-    fn ZiFWithWeights(mut self, weights: _ZiCQualityScoreWeights) -> Self {
+    fn with_weights(mut self, weights: _ZiCQualityScoreWeights) -> Self {
         self.weights = weights;
         self
     }
 }
 
-impl ZiCOperator for ZiCQualityScore {
+impl ZiOperator for ZiQualityScore {
     fn name(&self) -> &'static str {
         "quality.score"
     }
 
-    fn apply(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, mut batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         for record in &mut batch {
-            if let Some(Value::String(text)) = self.path.ZiFResolve(record) {
+            if let Some(Value::String(text)) = self.path.resolve(record) {
                 let components = _ZiCQualityScoreComponents::from_text(text);
                 let score = components.score(&self.weights);
                 if let Some(number) = serde_json::Number::from_f64(score) {
                     record
-                        .ZiFMetadataMut()
+                        .metadata_mut()
                         .insert(self.target_key.clone(), Value::Number(number));
                 }
 
                 if let Some(details_key) = &self.details_key {
                     let details = components.to_details_map(&self.weights, score);
                     record
-                        .ZiFMetadataMut()
+                        .metadata_mut()
                         .insert(details_key.clone(), Value::Object(details));
                 }
             }
@@ -531,24 +531,24 @@ impl ZiCOperator for ZiCQualityScore {
 }
 
 #[derive(Debug)]
-pub struct ZiCQualityFilter {
+pub struct ZiQualityFilter {
     key: String,
     min: f64,
 }
 
-impl ZiCQualityFilter {
+impl ZiQualityFilter {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(key: String, min: f64) -> Self {
+    pub fn new(key: String, min: f64) -> Self {
         Self { key, min }
     }
 }
 
-impl ZiCOperator for ZiCQualityFilter {
+impl ZiOperator for ZiQualityFilter {
     fn name(&self) -> &'static str {
         "quality.filter"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         Ok(batch
             .into_iter()
             .filter(|r| {
@@ -564,7 +564,7 @@ impl ZiCOperator for ZiCQualityFilter {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFQualityScoreFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn quality_score_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("quality.score config must be object"))?;
@@ -577,23 +577,23 @@ pub fn ZiFQualityScoreFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Se
         .and_then(Value::as_str)
         .unwrap_or("quality")
         .to_string();
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
-    let mut operator = ZiCQualityScore::ZiFNew(field_path, key);
+    let field_path = ZiFieldPath::parse(path)?;
+    let mut operator = ZiQualityScore::new(field_path, key);
 
     if let Some(Value::String(details_key)) = obj.get("details_key") {
-        operator = operator.ZiFWithDetails(Some(details_key.to_string()));
+        operator = operator.with_details(Some(details_key.to_string()));
     }
 
     if let Some(weights_obj) = obj.get("weights").and_then(Value::as_object) {
         let weights = _ZiCQualityScoreWeights::from_json(weights_obj)?;
-        operator = operator.ZiFWithWeights(weights);
+        operator = operator.with_weights(weights);
     }
 
     Ok(Box::new(operator))
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFQualityFilterFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn quality_filter_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("quality.filter config must be object"))?;
@@ -606,7 +606,7 @@ pub fn ZiFQualityFilterFactory(config: &Value) -> Result<Box<dyn ZiCOperator + S
         .get("min")
         .and_then(Value::as_f64)
         .ok_or_else(|| ZiError::validation("quality.filter requires numeric 'min'"))?;
-    Ok(Box::new(ZiCQualityFilter::ZiFNew(key, min)))
+    Ok(Box::new(ZiQualityFilter::new(key, min)))
 }
 
 #[allow(non_upper_case_globals)]
@@ -643,16 +643,16 @@ impl _ZiCToxicTerm {
 }
 
 #[derive(Debug)]
-pub struct ZiCToxicityScore {
-    path: ZiCFieldPath,
+pub struct ZiToxicityScore {
+    path: ZiFieldPath,
     target_key: String,
     lexicon: Vec<_ZiCToxicTerm>,
 }
 
-impl ZiCToxicityScore {
+impl ZiToxicityScore {
     #[allow(non_snake_case)]
-    pub(crate) fn ZiFNew(
-        path: ZiCFieldPath,
+    pub(crate) fn new(
+        path: ZiFieldPath,
         target_key: String,
         lexicon: Vec<_ZiCToxicTerm>,
     ) -> Self {
@@ -752,19 +752,19 @@ impl ZiCToxicityScore {
     }
 }
 
-impl ZiCOperator for ZiCToxicityScore {
+impl ZiOperator for ZiToxicityScore {
     fn name(&self) -> &'static str {
         "quality.toxicity"
     }
 
-    fn apply(&self, mut batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, mut batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         for record in &mut batch {
-            if let Some(Value::String(text)) = self.path.ZiFResolve(record) {
+            if let Some(Value::String(text)) = self.path.resolve(record) {
                 let score = self.score_text(text);
                 let number = serde_json::Number::from_f64(score)
                     .unwrap_or_else(|| serde_json::Number::from(0));
                 record
-                    .ZiFMetadataMut()
+                    .metadata_mut()
                     .insert(self.target_key.clone(), Value::Number(number));
             }
         }
@@ -773,7 +773,7 @@ impl ZiCOperator for ZiCToxicityScore {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFToxicityFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
+pub fn toxicity_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
     let obj = config
         .as_object()
         .ok_or_else(|| ZiError::validation("quality.toxicity config must be object"))?;
@@ -843,7 +843,7 @@ pub fn ZiFToxicityFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send +
             .collect()
     });
 
-    let field_path = ZiCFieldPath::ZiFParse(path)?;
-    Ok(Box::new(ZiCToxicityScore::ZiFNew(field_path, key, lexicon)))
+    let field_path = ZiFieldPath::parse(path)?;
+    Ok(Box::new(ZiToxicityScore::new(field_path, key, lexicon)))
 }
 

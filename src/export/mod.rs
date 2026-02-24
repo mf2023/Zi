@@ -15,12 +15,58 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # Data Export Module
+//!
+//! This module provides data export capabilities for the Zi framework,
+//! enabling users to write records to various formats and generate dataset manifests.
+//!
+//! ## Module Components
+//!
+//! - **Writer** ([writer.rs](writer/index.html)): Stream-based record writing with format support
+//! - **Manifest** ([manifest.rs](manifest/index.html)): Dataset metadata and lineage tracking
+//!
+//! ## Supported Output Formats
+//!
+//! - **JSONL**: Line-delimited JSON for streaming
+//! - **JSON**: Pretty-printed or compact JSON arrays
+//! - **CSV**: Comma-separated values with headers
+//! - **Parquet**: Columnar format for analytical workloads (with feature flag)
+//!
+//! ## Usage Patterns
+//!
+//! ### Writing Records
+//!
+//! ```rust
+//! use zi::export::{ZiStreamWriter, ZiWriterConfig, ZiOutputFormat};
+//! use zi::record::ZiRecordBatch;
+//!
+//! let config = ZiWriterConfig {
+//!     format: ZiOutputFormat::Jsonl,
+//!     ..Default::default()
+//! };
+//! let mut writer = ZiStreamWriter::new(config);
+//! let stats = writer.write(&batch, &path)?;
+//! ```
+//!
+//! ### Building Manifests
+//!
+//! ```rust
+//! use zi::export::{ZiManifestBuilder, ZiManifestFile};
+//!
+//! let manifest = ZiManifestBuilder::new()
+//!     .with_version("1.0")
+//!     .add_file_info("data.jsonl", 1024, "abc123", 100, "jsonl")
+//!     .add_source("source.jsonl", "hash123", 50)
+//!     .add_transform("filter", serde_json::json!({"field": "value"}))
+//!     .build();
+//! ```
+
 pub mod writer;
 pub mod manifest;
 
-pub use writer::{ZiCStreamWriter, ZiCWriterConfig, ZiCOutputFormat, ZiCWriteStats};
+pub use writer::{ZiStreamWriter, ZiWriterConfig, ZiOutputFormat, ZiWriteStats};
 pub use manifest::{
-    ZiCManifest, ZiCManifestBuilder, ZiCManifestFile, ZiCManifestStats,
-    ZiCLineage, ZiCLineageSource, ZiCLineageTransform,
+    ZiManifest, ZiManifestBuilder, ZiManifestFile, ZiManifestStats,
+    ZiLineage, ZiLineageSource, ZiLineageTransform,
     compute_file_hash,
 };

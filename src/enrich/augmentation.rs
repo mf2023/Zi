@@ -15,47 +15,62 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # Data Augmentation Module
+//!
+//! This module provides data augmentation capabilities for increasing dataset diversity
+//! through various transformation techniques.
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::errors::Result;
-use crate::record::ZiCRecordBatch;
+use crate::record::ZiRecordBatch;
 
+/// Configuration for data augmentation.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ZiCAugmentationConfig {
-    pub methods: Vec<ZiCAugmentationMethod>,
+pub struct ZiAugmentationConfig {
+    /// List of augmentation methods to apply.
+    pub methods: Vec<ZiAugmentationMethod>,
+    /// Whether to preserve original records in output.
     pub preserve_original: bool,
 }
 
+/// Augmentation methods supported.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ZiCAugmentationMethod {
+pub enum ZiAugmentationMethod {
+    /// Randomly shuffle record order.
     Shuffle,
+    /// Create duplicate records with new IDs.
     Duplicate { count: usize },
+    /// Add random noise by removing characters.
     Noise { ratio: f64 },
 }
 
-impl Default for ZiCAugmentationConfig {
+impl Default for ZiAugmentationConfig {
     fn default() -> Self {
         Self {
-            methods: vec![ZiCAugmentationMethod::Duplicate { count: 1 }],
+            methods: vec![ZiAugmentationMethod::Duplicate { count: 1 }],
             preserve_original: true,
         }
     }
 }
 
+/// Data augmenter for applying augmentation techniques.
 #[derive(Debug)]
-pub struct ZiCAugmenter {
-    config: ZiCAugmentationConfig,
+pub struct ZiAugmenter {
+    config: ZiAugmentationConfig,
 }
 
-impl ZiCAugmenter {
+impl ZiAugmenter {
+    /// Creates a new augmenter with the given configuration.
     #[allow(non_snake_case)]
-    pub fn ZiFNew(config: ZiCAugmentationConfig) -> Self {
+    pub fn new(config: ZiAugmentationConfig) -> Self {
         Self { config }
     }
 
+    /// Augments all records in a batch.
     #[allow(non_snake_case)]
-    pub fn ZiFAugment(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    pub fn augment(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         let mut augmented = Vec::new();
 
         if self.config.preserve_original {
@@ -70,18 +85,18 @@ impl ZiCAugmenter {
         Ok(augmented)
     }
 
-    fn apply_method(&self, batch: &ZiCRecordBatch, method: &ZiCAugmentationMethod) -> Result<ZiCRecordBatch> {
+    fn apply_method(&self, batch: &ZiRecordBatch, method: &ZiAugmentationMethod) -> Result<ZiRecordBatch> {
         match method {
-            ZiCAugmentationMethod::Shuffle => {
+            ZiAugmentationMethod::Shuffle => {
                 let mut shuffled = batch.clone();
                 use rand::seq::SliceRandom;
                 let mut rng = rand::thread_rng();
                 shuffled.shuffle(&mut rng);
                 
                 for (i, record) in shuffled.iter_mut().enumerate() {
-                    record.ZiFMetadataMut()
+                    record.metadata_mut()
                         .insert("augmented".to_string(), Value::Bool(true));
-                    record.ZiFMetadataMut()
+                    record.metadata_mut()
                         .insert("augmentation_method".to_string(), Value::String("shuffle".to_string()));
                     if let Some(id) = &record.id {
                         record.id = Some(format!("{}_shuf_{}", id, i));
@@ -90,7 +105,7 @@ impl ZiCAugmenter {
                 
                 Ok(shuffled)
             }
-            ZiCAugmentationMethod::Duplicate { count } => {
+            ZiAugmentationMethod::Duplicate { count } => {
                 let mut duplicated = Vec::new();
                 
                 for record in batch {
@@ -99,9 +114,9 @@ impl ZiCAugmenter {
                         if let Some(id) = &record.id {
                             new_record.id = Some(format!("{}_dup_{}", id, i));
                         }
-                        new_record.ZiFMetadataMut()
+                        new_record.metadata_mut()
                             .insert("augmented".to_string(), Value::Bool(true));
-                        new_record.ZiFMetadataMut()
+                        new_record.metadata_mut()
                             .insert("augmentation_method".to_string(), Value::String("duplicate".to_string()));
                         duplicated.push(new_record);
                     }
@@ -109,7 +124,7 @@ impl ZiCAugmenter {
                 
                 Ok(duplicated)
             }
-            ZiCAugmentationMethod::Noise { ratio } => {
+            ZiAugmentationMethod::Noise { ratio } => {
                 let mut noisy = batch.clone();
                 
                 for record in noisy.iter_mut() {
@@ -123,9 +138,9 @@ impl ZiCAugmenter {
                         }
                     }
                     
-                    record.ZiFMetadataMut()
+                    record.metadata_mut()
                         .insert("augmented".to_string(), Value::Bool(true));
-                    record.ZiFMetadataMut()
+                    record.metadata_mut()
                         .insert("augmentation_method".to_string(), Value::String("noise".to_string()));
                 }
                 

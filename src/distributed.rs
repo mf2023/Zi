@@ -15,6 +15,43 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # Distributed Execution Module
+//!
+//! This module provides distributed computing capabilities for Zi pipelines,
+//! supporting master-worker architecture with TCP-based communication.
+//!
+//! ## Architecture
+//!
+//! - **Master Node**: Coordinates task distribution and result aggregation
+//! - **Worker Nodes**: Execute pipeline stages on data chunks
+//!
+//! ## Features
+//!
+//! - TCP-based communication between master and workers
+//! - Automatic worker registration and health monitoring
+//! - Task distribution with round-robin scheduling
+//! - Pipeline serialization for remote execution
+//!
+//! ## Usage Example
+//!
+//! ```rust,no_run
+//! use zi::distributed::{ZiDistributedCluster, ZiDistributedNodeConfig, ZiDistributedNodeRole};
+//!
+//! // Create master node configuration
+//! let master_config = ZiDistributedNodeConfig {
+//!     id: "master_1".to_string(),
+//!     address: "127.0.0.1:8000".to_string(),
+//!     role: ZiDistributedNodeRole::Master,
+//!     known_nodes: vec![],
+//!     max_memory_mb: None,
+//!     num_cpus: None,
+//! };
+//!
+//! // Start cluster
+//! let mut cluster = ZiDistributedCluster::new(master_config);
+//! cluster.start().unwrap();
+//! ```
+
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream, Shutdown};
@@ -26,83 +63,151 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::errors::{Result, ZiError};
-use crate::pipeline::{ZiCPipeline, ZiCPipelineNode, ZiCPipelineBuilder};
-use crate::record::ZiCRecordBatch;
+use crate::pipeline::{ZiPipeline, ZiPipelineNode, ZiPipelineBuilder};
+use crate::record::ZiRecordBatch;
 
+/// Connection timeout for TCP communications (30 seconds).
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Configuration for a distributed node in the cluster.
+///
+/// Defines node identity, network address, role, and resource constraints.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ZiCDistributedNodeConfig {
+pub struct ZiDistributedNodeConfig {
+    /// Unique identifier for this node
     pub id: String,
+    /// Network address for TCP communication (format: "host:port")
     pub address: String,
-    pub role: ZiCDistributedNodeRole,
-    pub known_nodes: Vec<ZiCDistributedNodeConfig>,
+    /// Role in the cluster (Master or Worker)
+    pub role: ZiDistributedNodeRole,
+    /// List of known nodes in the cluster for discovery
+    pub known_nodes: Vec<ZiDistributedNodeConfig>,
+    /// Maximum memory usage in megabytes (None = unlimited)
     pub max_memory_mb: Option<usize>,
+    /// Number of CPUs available (None = auto-detect)
     pub num_cpus: Option<usize>,
 }
 
+/// Role types for distributed nodes.
+///
+/// Master nodes coordinate task distribution while worker nodes execute tasks.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum ZiCDistributedNodeRole {
+pub enum ZiDistributedNodeRole {
+    /// Coordinator node that distributes work and aggregates results
     Master,
+    /// Execution node that processes data chunks
     Worker,
 }
 
+/// Request to execute a pipeline on a data chunk in distributed mode.
+///
+/// Contains all information needed for distributed task execution including
+/// pipeline configuration, input data, and execution constraints.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ZiCDistributedExecutionRequest {
+pub struct ZiDistributedExecutionRequest {
+    /// Unique identifier for tracking this request
     pub request_id: String,
+    /// Serialized pipeline configuration
     pub pipeline: Value,
-    pub data_chunk: ZiCRecordBatch,
+    /// Input data to process
+    pub data_chunk: ZiRecordBatch,
+    /// Maximum execution time in milliseconds
     pub timeout_ms: u64,
+    /// Priority level (higher values execute first)
     pub priority: u8,
 }
 
+/// Response from distributed execution containing results or error information.
+///
+/// Returned by worker nodes after processing a task chunk.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ZiCDistributedExecutionResponse {
+pub struct ZiDistributedExecutionResponse {
+    /// Request ID for correlation
     pub request_id: String,
-    pub result: Option<ZiCRecordBatch>,
+    /// Processed records if successful
+    pub result: Option<ZiRecordBatch>,
+    /// Error message if execution failed
     pub error: Option<String>,
+    /// Actual execution time in milliseconds
     pub execution_time_ms: u64,
+    /// Number of records processed
     pub records_processed: usize,
 }
 
+/// Task representation for distributed execution queue.
+///
+/// Represents a unit of work that can be scheduled across worker nodes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ZiCDistributedTask {
+pub struct ZiDistributedTask {
+    /// Unique task identifier
     pub task_id: String,
+    /// Index of this chunk in the total batch
     pub chunk_index: usize,
+    /// Total number of chunks the batch is divided into
     pub total_chunks: usize,
-    pub chunk: ZiCRecordBatch,
+    /// Records to process
+    pub chunk: ZiRecordBatch,
+    /// Pipeline configuration for execution
     pub pipeline_config: Value,
+    /// Task priority for scheduling
     pub priority: u8,
+    /// Creation timestamp (Unix epoch seconds)
     pub created_at: u64,
+    /// Number of retry attempts
     pub retry_count: u32,
 }
 
+/// Runtime status information for a worker node.
+///
+/// Used by master to monitor cluster health and load balance.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ZiCWorkerStatus {
+pub struct ZiWorkerStatus {
+    /// Worker node identifier
     pub node_id: String,
+    /// Network address for communication
     pub address: String,
+    /// Last heartbeat timestamp (Unix epoch seconds)
     pub last_heartbeat: u64,
+    /// Whether the worker is currently processing a task
     pub is_busy: bool,
+    /// Cumulative records processed since start
     pub records_processed: u64,
+    /// Average task latency in milliseconds
     pub avg_latency_ms: f64,
+    /// Current memory usage in megabytes
     pub memory_usage_mb: usize,
 }
 
-pub struct ZiCDistributedCluster {
-    config: ZiCDistributedNodeConfig,
-    workers: Arc<Mutex<HashMap<String, Arc<Mutex<ZiCWorkerStatus>>>>>,
-    pipelines: Arc<Mutex<HashMap<String, ZiCPipeline>>>,
-    tasks: Arc<Mutex<Vec<ZiCDistributedTask>>>,
-    results: Arc<Mutex<HashMap<String, ZiCDistributedExecutionResponse>>>,
+/// Distributed cluster managing master-worker coordination.
+///
+/// This is the main entry point for distributed execution. It handles:
+/// - Worker node registration and health monitoring
+/// - Task distribution and result aggregation
+/// - Pipeline serialization for remote execution
+pub struct ZiDistributedCluster {
+    /// Node configuration (role, address, resources)
+    config: ZiDistributedNodeConfig,
+    /// Worker node status registry
+    workers: Arc<Mutex<HashMap<String, Arc<Mutex<ZiWorkerStatus>>>>>,
+    /// Cached pipelines for execution
+    pipelines: Arc<Mutex<HashMap<String, ZiPipeline>>>,
+    /// Pending tasks in the execution queue
+    tasks: Arc<Mutex<Vec<ZiDistributedTask>>>,
+    /// Completed results indexed by request ID
+    results: Arc<Mutex<HashMap<String, ZiDistributedExecutionResponse>>>,
 }
 
-impl ZiCDistributedCluster {
+impl ZiDistributedCluster {
+    /// Creates a new distributed cluster from configuration.
+    ///
+    /// Initializes the cluster with the given node configuration.
+    /// For worker nodes, also pre-registers all known worker nodes from config.
     #[allow(non_snake_case)]
-    pub fn ZiFNew(config: ZiCDistributedNodeConfig) -> Self {
+    pub fn new(config: ZiDistributedNodeConfig) -> Self {
         let mut workers = HashMap::new();
         for node in &config.known_nodes {
-            if node.role == ZiCDistributedNodeRole::Worker {
-                workers.insert(node.id.clone(), Arc::new(Mutex::new(ZiCWorkerStatus {
+            if node.role == ZiDistributedNodeRole::Worker {
+                workers.insert(node.id.clone(), Arc::new(Mutex::new(ZiWorkerStatus {
                     node_id: node.id.clone(),
                     address: node.address.clone(),
                     last_heartbeat: 0,
@@ -114,7 +219,7 @@ impl ZiCDistributedCluster {
             }
         }
 
-        ZiCDistributedCluster {
+        ZiDistributedCluster {
             config,
             workers: Arc::new(Mutex::new(workers)),
             pipelines: Arc::new(Mutex::new(HashMap::new())),
@@ -123,13 +228,17 @@ impl ZiCDistributedCluster {
         }
     }
 
+    /// Starts the cluster in the appropriate mode based on node role.
+    ///
+    /// For Master nodes: starts TCP listener for worker connections
+    /// For Worker nodes: registers with master and starts TCP listener for tasks
     #[allow(non_snake_case)]
-    pub fn ZiFStart(&mut self) -> Result<()> {
+    pub fn start(&mut self) -> Result<()> {
         match self.config.role {
-            ZiCDistributedNodeRole::Master => {
+            ZiDistributedNodeRole::Master => {
                 self.start_master()?;
             }
-            ZiCDistributedNodeRole::Worker => {
+            ZiDistributedNodeRole::Worker => {
                 self.start_worker()?;
             }
         }
@@ -197,7 +306,7 @@ impl ZiCDistributedCluster {
     fn register_with_master(&self) -> Result<()> {
         let master = self.config.known_nodes
             .iter()
-            .find(|node| node.role == ZiCDistributedNodeRole::Master)
+            .find(|node| node.role == ZiDistributedNodeRole::Master)
             .ok_or_else(|| {
                 ZiError::internal("no master node found in known nodes")
             })?;
@@ -230,10 +339,10 @@ impl ZiCDistributedCluster {
 
     fn handle_master_connection(
         mut stream: TcpStream,
-        workers: Arc<Mutex<HashMap<String, Arc<Mutex<ZiCWorkerStatus>>>>>,
-        _pipelines: Arc<Mutex<HashMap<String, ZiCPipeline>>>,
-        _tasks: Arc<Mutex<Vec<ZiCDistributedTask>>>,
-        _results: Arc<Mutex<HashMap<String, ZiCDistributedExecutionResponse>>>,
+        workers: Arc<Mutex<HashMap<String, Arc<Mutex<ZiWorkerStatus>>>>>,
+        _pipelines: Arc<Mutex<HashMap<String, ZiPipeline>>>,
+        _tasks: Arc<Mutex<Vec<ZiDistributedTask>>>,
+        _results: Arc<Mutex<HashMap<String, ZiDistributedExecutionResponse>>>,
     ) {
         let mut reader = BufReader::new(&stream);
         let mut line = String::new();
@@ -255,7 +364,7 @@ impl ZiCDistributedCluster {
                     if let Some(address) = request.get("address").and_then(Value::as_str) {
                         let mut workers_guard = workers.lock().unwrap();
                         if !workers_guard.contains_key(node_id) {
-                            workers_guard.insert(node_id.to_string(), Arc::new(Mutex::new(ZiCWorkerStatus {
+                            workers_guard.insert(node_id.to_string(), Arc::new(Mutex::new(ZiWorkerStatus {
                                 node_id: node_id.to_string(),
                                 address: address.to_string(),
                                 last_heartbeat: 0,
@@ -278,15 +387,15 @@ impl ZiCDistributedCluster {
                 if let Some(task_id) = request.get("task_id").and_then(Value::as_str) {
                     if let Some(pipeline_config) = request.get("pipeline").cloned() {
                         if let Some(chunk) = request.get("chunk").and_then(Value::as_array) {
-                            let chunk_records: ZiCRecordBatch = chunk.iter().filter_map(|v| {
+                            let chunk_records: ZiRecordBatch = chunk.iter().filter_map(|v| {
                                 serde_json::from_value(v.clone()).ok()
                             }).collect();
 
                             let start_time = Instant::now();
-                            let mut result_batch: Vec<crate::record::ZiCRecord> = Vec::new();
+                            let mut result_batch: Vec<crate::record::ZiRecord> = Vec::new();
                             let mut error_msg: Option<String> = None;
 
-                            match ZiCPipelineBuilder::new().build_from_config(&pipeline_config.as_array().unwrap_or(&vec![])) {
+                            match ZiPipelineBuilder::new().build_from_config(&pipeline_config.as_array().unwrap_or(&vec![])) {
                                 Ok(pipeline) => {
                                     match pipeline.run(chunk_records.clone()) {
                                         Ok(processed) => {
@@ -303,7 +412,7 @@ impl ZiCDistributedCluster {
                             }
 
                             let records_processed = if error_msg.is_none() { result_batch.len() } else { 0 };
-                            let response = ZiCDistributedExecutionResponse {
+                            let response = ZiDistributedExecutionResponse {
                                 request_id: task_id.to_string(),
                                 result: if error_msg.is_none() { Some(result_batch) } else { None },
                                 error: error_msg,
@@ -384,15 +493,15 @@ impl ZiCDistributedCluster {
             "execute" => {
                 if let Some(pipeline_config) = request.get("pipeline").cloned() {
                     if let Some(chunk) = request.get("chunk").and_then(Value::as_array) {
-                        let chunk_records: ZiCRecordBatch = chunk.iter().filter_map(|v| {
+                        let chunk_records: ZiRecordBatch = chunk.iter().filter_map(|v| {
                             serde_json::from_value(v.clone()).ok()
                         }).collect();
 
                         let start_time = Instant::now();
-                        let mut result_batch: Vec<crate::record::ZiCRecord> = Vec::new();
+                        let mut result_batch: Vec<crate::record::ZiRecord> = Vec::new();
                         let mut error_msg: Option<String> = None;
 
-                        match ZiCPipelineBuilder::new().build_from_config(&pipeline_config.as_array().unwrap_or(&vec![])) {
+                        match ZiPipelineBuilder::new().build_from_config(&pipeline_config.as_array().unwrap_or(&vec![])) {
                             Ok(pipeline) => {
                                 match pipeline.run(chunk_records.clone()) {
                                     Ok(processed) => {
@@ -409,7 +518,7 @@ impl ZiCDistributedCluster {
                         }
 
                         let records_processed = if error_msg.is_none() { result_batch.len() } else { 0 };
-                        let response = ZiCDistributedExecutionResponse {
+                        let response = ZiDistributedExecutionResponse {
                             request_id: request.get("request_id").and_then(Value::as_str).unwrap_or("").to_string(),
                             result: if error_msg.is_none() { Some(result_batch) } else { None },
                             error: error_msg,
@@ -436,14 +545,26 @@ impl ZiCDistributedCluster {
         }
     }
 
+    /// Executes a pipeline in distributed mode across worker nodes.
+    ///
+    /// Splits the input batch into chunks and distributes them to worker nodes
+    /// for parallel execution. Results are aggregated and returned.
+    ///
+    /// # Arguments
+    /// * `pipeline` - The pipeline to execute
+    /// * `batch` - Input records to process
+    /// * `num_workers` - Number of workers to use (0 = auto)
+    ///
+    /// # Errors
+    /// Returns error if called on a worker node or if workers are unavailable.
     #[allow(non_snake_case)]
-    pub fn ZiFRunDistributed(
+    pub fn run_distributed(
         &self,
-        pipeline: &ZiCPipeline,
-        batch: ZiCRecordBatch,
+        pipeline: &ZiPipeline,
+        batch: ZiRecordBatch,
         num_workers: usize,
-    ) -> Result<ZiCRecordBatch> {
-        if self.config.role != ZiCDistributedNodeRole::Master {
+    ) -> Result<ZiRecordBatch> {
+        if self.config.role != ZiDistributedNodeRole::Master {
             return Err(ZiError::validation("distributed execution can only be initiated from master node"));
         }
 
@@ -500,8 +621,8 @@ impl ZiCDistributedCluster {
         Ok(results)
     }
 
-    fn extract_pipeline_config(&self, pipeline: &ZiCPipeline) -> Result<Value> {
-        let plan = ZiCDistributedExecutionPlan::ZiFFromPipeline(pipeline);
+    fn extract_pipeline_config(&self, pipeline: &ZiPipeline) -> Result<Value> {
+        let plan = ZiDistributedExecutionPlan::from_pipeline(pipeline);
         let steps: Vec<Value> = plan.nodes.iter().map(|n| {
             json!({
                 "operator": n.op_code,
@@ -511,7 +632,7 @@ impl ZiCDistributedCluster {
         Ok(json!({"steps": steps}))
     }
 
-    fn split_batch(&self, batch: ZiCRecordBatch, num_chunks: usize) -> Vec<ZiCRecordBatch> {
+    fn split_batch(&self, batch: ZiRecordBatch, num_chunks: usize) -> Vec<ZiRecordBatch> {
         if num_chunks <= 1 || batch.is_empty() {
             return vec![batch];
         }
@@ -536,11 +657,11 @@ impl ZiCDistributedCluster {
     }
 
     fn send_task_to_worker(
-        worker: &Arc<Mutex<ZiCWorkerStatus>>,
+        worker: &Arc<Mutex<ZiWorkerStatus>>,
         pipeline_config: &Value,
-        chunk: &ZiCRecordBatch,
+        chunk: &ZiRecordBatch,
         chunk_index: usize,
-    ) -> Result<ZiCRecordBatch> {
+    ) -> Result<ZiRecordBatch> {
         let worker_addr = {
             let guard = worker.lock().unwrap();
             guard.address.clone()
@@ -566,7 +687,7 @@ impl ZiCDistributedCluster {
         let mut line = String::new();
         reader.read_line(&mut line)?;
 
-        let response: ZiCDistributedExecutionResponse = serde_json::from_str(&line.trim())
+        let response: ZiDistributedExecutionResponse = serde_json::from_str(&line.trim())
             .map_err(|e| ZiError::internal(format!("failed to parse response: {}", e)))?;
 
         if let Some(error) = response.error {
@@ -576,8 +697,14 @@ impl ZiCDistributedCluster {
         response.result.ok_or_else(|| ZiError::internal("no result from worker"))
     }
 
+    /// Retrieves the current status of all worker nodes in the cluster.
+    ///
+    /// Returns a JSON value containing:
+    /// - Master node ID
+    /// - Number of workers
+    /// - Per-worker status (ID, address, busy state, metrics)
     #[allow(non_snake_case)]
-    pub fn ZiFGetClusterStatus(&self) -> Result<Value> {
+    pub fn get_cluster_status(&self) -> Result<Value> {
         let workers = self.workers.lock().map_err(|_| {
             ZiError::internal("failed to acquire workers mutex")
         })?;
@@ -602,8 +729,8 @@ impl ZiCDistributedCluster {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFAddWorker(&self, node_config: ZiCDistributedNodeConfig) -> Result<()> {
-        if node_config.role != ZiCDistributedNodeRole::Worker {
+    pub fn add_worker(&self, node_config: ZiDistributedNodeConfig) -> Result<()> {
+        if node_config.role != ZiDistributedNodeRole::Worker {
             return Err(ZiError::validation("only worker nodes can be added this way"));
         }
 
@@ -611,7 +738,7 @@ impl ZiCDistributedCluster {
             ZiError::internal("failed to acquire workers mutex")
         })?;
 
-        workers.insert(node_config.id.clone(), Arc::new(Mutex::new(ZiCWorkerStatus {
+        workers.insert(node_config.id.clone(), Arc::new(Mutex::new(ZiWorkerStatus {
             node_id: node_config.id.clone(),
             address: node_config.address.clone(),
             last_heartbeat: 0,
@@ -625,31 +752,31 @@ impl ZiCDistributedCluster {
     }
 }
 
-pub trait ZiCDistributedPipelineExt {
+pub trait ZiDistributedPipelineExt {
     #[allow(non_snake_case)]
-    fn ZiFRunDistributed(
+    fn run_distributed(
         &self,
-        batch: ZiCRecordBatch,
-        cluster: &ZiCDistributedCluster,
+        batch: ZiRecordBatch,
+        cluster: &ZiDistributedCluster,
         num_workers: usize,
-    ) -> Result<ZiCRecordBatch>;
+    ) -> Result<ZiRecordBatch>;
 }
 
-impl ZiCDistributedPipelineExt for ZiCPipeline {
+impl ZiDistributedPipelineExt for ZiPipeline {
     #[allow(non_snake_case)]
-    fn ZiFRunDistributed(
+    fn run_distributed(
         &self,
-        batch: ZiCRecordBatch,
-        cluster: &ZiCDistributedCluster,
+        batch: ZiRecordBatch,
+        cluster: &ZiDistributedCluster,
         num_workers: usize,
-    ) -> Result<ZiCRecordBatch> {
-        cluster.ZiFRunDistributed(self, batch, num_workers)
+    ) -> Result<ZiRecordBatch> {
+        cluster.run_distributed(self, batch, num_workers)
     }
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFLoadPipelineFromDistributedConfig(config: &Value) -> Result<ZiCPipeline> {
-    let builder = ZiCPipelineBuilder::new();
+pub fn load_pipeline_from_distributed_config(config: &Value) -> Result<ZiPipeline> {
+    let builder = ZiPipelineBuilder::new();
 
     let steps = config.get("pipeline")
         .and_then(Value::as_array)
@@ -659,8 +786,8 @@ pub fn ZiFLoadPipelineFromDistributedConfig(config: &Value) -> Result<ZiCPipelin
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFExportPipelineToDistributedConfig(pipeline: &ZiCPipeline) -> Result<Value> {
-    let plan = ZiCDistributedExecutionPlan::ZiFFromPipeline(pipeline);
+pub fn export_pipeline_to_distributed_config(pipeline: &ZiPipeline) -> Result<Value> {
+    let plan = ZiDistributedExecutionPlan::from_pipeline(pipeline);
     let pipeline_steps: Vec<Value> = plan.nodes.iter().map(|n| {
         json!({
             "operator": n.op_code,
@@ -673,7 +800,7 @@ pub fn ZiFExportPipelineToDistributedConfig(pipeline: &ZiCPipeline) -> Result<Va
     }))
 }
 
-pub struct ZiCDistributedPlanNode {
+pub struct ZiDistributedPlanNode {
     pub node_id: String,
     pub op_code: String,
     pub config: Value,
@@ -681,37 +808,37 @@ pub struct ZiCDistributedPlanNode {
     pub input_nodes: Vec<String>,
 }
 
-pub struct ZiCDistributedExecutionPlan {
-    pub nodes: Vec<ZiCDistributedPlanNode>,
+pub struct ZiDistributedExecutionPlan {
+    pub nodes: Vec<ZiDistributedPlanNode>,
     pub edges: Vec<(String, String)>,
 }
 
-impl ZiCDistributedExecutionPlan {
+impl ZiDistributedExecutionPlan {
     #[allow(non_snake_case)]
-    pub fn ZiFFromPipeline(pipeline: &ZiCPipeline) -> Self {
+    pub fn from_pipeline(pipeline: &ZiPipeline) -> Self {
         let mut nodes = Vec::new();
         let mut edges = Vec::new();
         let mut node_counter = 0;
 
         Self::extract_nodes(pipeline.root(), &mut nodes, &mut edges, &mut node_counter);
 
-        ZiCDistributedExecutionPlan {
+        ZiDistributedExecutionPlan {
             nodes,
             edges,
         }
     }
 
     fn extract_nodes(
-        node: &ZiCPipelineNode,
-        nodes: &mut Vec<ZiCDistributedPlanNode>,
+        node: &ZiPipelineNode,
+        nodes: &mut Vec<ZiDistributedPlanNode>,
         edges: &mut Vec<(String, String)>,
         counter: &mut u32,
     ) -> String {
         match node {
-            ZiCPipelineNode::Operator(op) => {
+            ZiPipelineNode::Operator(op) => {
                 let node_id = format!("node_{}", *counter);
                 *counter += 1;
-                nodes.push(ZiCDistributedPlanNode {
+                nodes.push(ZiDistributedPlanNode {
                     node_id: node_id.clone(),
                     op_code: op.name().to_string(),
                     config: json!({}),
@@ -721,7 +848,7 @@ impl ZiCDistributedExecutionPlan {
                 node_id
             }
 
-            ZiCPipelineNode::Sequence(nodes_list) => {
+            ZiPipelineNode::Sequence(nodes_list) => {
                 let mut prev_node_id = String::new();
                 for n in nodes_list {
                     let curr_node_id = Self::extract_nodes(n, nodes, edges, counter);
@@ -733,11 +860,11 @@ impl ZiCDistributedExecutionPlan {
                 prev_node_id
             }
 
-            ZiCPipelineNode::Conditional { predicate, then_branch, else_branch } => {
+            ZiPipelineNode::Conditional { predicate, then_branch, else_branch } => {
                 // predicate is an operator, not a pipeline node - create a node for it
                 let pred_id = format!("node_{}", *counter);
                 *counter += 1;
-                nodes.push(ZiCDistributedPlanNode {
+                nodes.push(ZiDistributedPlanNode {
                     node_id: pred_id.clone(),
                     op_code: predicate.name().to_string(),
                     config: json!({"type": "predicate"}),
@@ -754,7 +881,7 @@ impl ZiCDistributedExecutionPlan {
                 format!("merge_{}", *counter)
             }
 
-            ZiCPipelineNode::Parallel { branches, num_workers: _ } => {
+            ZiPipelineNode::Parallel { branches, num_workers: _ } => {
                 let mut branch_outputs = Vec::new();
                 for (_i, branch) in branches.iter().enumerate() {
                     let branch_output = Self::extract_nodes(branch, nodes, edges, counter);
@@ -771,7 +898,7 @@ impl ZiCDistributedExecutionPlan {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFToJson(&self) -> Value {
+    pub fn to_json(&self) -> Value {
         json!({
             "nodes": self.nodes.iter().map(|n| json!({
                 "id": n.node_id,

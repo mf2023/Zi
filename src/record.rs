@@ -19,25 +19,25 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 /// Generic metadata map that may accompany a record.
-pub type ZiCMetadata = Map<String, Value>;
+pub type ZiMetadata = Map<String, Value>;
 
 /// Fundamental data unit processed by Zi Core operators.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ZiCRecord {
+pub struct ZiRecord {
     /// Optional stable identifier for the record.
     pub id: Option<String>,
     /// Primary payload carrying user content.
     pub payload: Value,
     /// Additional attributes such as scores, tags, or provenance.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<ZiCMetadata>,
+    pub metadata: Option<ZiMetadata>,
 }
 
-impl ZiCRecord {
+impl ZiRecord {
     /// Constructs a record with the given payload and optional identifier.
     #[allow(non_snake_case)]
-    pub fn ZiFNew(id: impl Into<Option<String>>, payload: Value) -> Self {
-        ZiCRecord {
+    pub fn new(id: impl Into<Option<String>>, payload: Value) -> Self {
+        ZiRecord {
             id: id.into(),
             payload,
             metadata: None,
@@ -46,20 +46,20 @@ impl ZiCRecord {
 
     /// Attaches metadata to the record.
     #[allow(non_snake_case)]
-    pub fn ZiFWithMetadata(mut self, metadata: ZiCMetadata) -> Self {
+    pub fn with_metadata(mut self, metadata: ZiMetadata) -> Self {
         self.metadata = Some(metadata);
         self
     }
 
     /// Returns a mutable reference to the metadata map, creating it if necessary.
     #[allow(non_snake_case)]
-    pub fn ZiFMetadataMut(&mut self) -> &mut ZiCMetadata {
+    pub fn metadata_mut(&mut self) -> &mut ZiMetadata {
         if self.metadata.is_none() {
-            self.metadata = Some(ZiCMetadata::new());
+            self.metadata = Some(ZiMetadata::new());
         }
         self.metadata.as_mut().expect("metadata map missing")
     }
 }
 
 /// Convenience alias for working on batches of records.
-pub type ZiCRecordBatch = Vec<ZiCRecord>;
+pub type ZiRecordBatch = Vec<ZiRecord>;

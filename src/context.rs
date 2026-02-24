@@ -34,12 +34,12 @@ pub struct ZiContext {
 
 impl ZiContext {
     #[allow(non_snake_case)]
-    pub async fn ZiFNew() -> DMSCResult<Self> {
-        Self::ZiFNewWithConfig(ZiContextConfig::default()).await
+    pub async fn new() -> DMSCResult<Self> {
+        Self::new_with_config(ZiContextConfig::default()).await
     }
 
     #[allow(non_snake_case)]
-    pub async fn ZiFNewWithConfig(config: ZiContextConfig) -> DMSCResult<Self> {
+    pub async fn new_with_config(config: ZiContextConfig) -> DMSCResult<Self> {
         let fs = DMSCFileSystem::new_auto_root()?;
         
         let log_config = DMSCLogConfig {
@@ -74,27 +74,27 @@ impl ZiContext {
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFLogger(&self) -> &DMSCLogger {
+    pub fn logger(&self) -> &DMSCLogger {
         &self.logger
     }
 
     #[allow(non_snake_case)]
-    pub async fn ZiFCacheManager(&self) -> Arc<RwLock<DMSCCacheManager>> {
+    pub async fn cache_manager(&self) -> Arc<RwLock<DMSCCacheManager>> {
         self.cache.read().await.cache_manager()
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFMetrics(&self) -> Arc<DMSCMetricsRegistry> {
+    pub fn metrics(&self) -> Arc<DMSCMetricsRegistry> {
         self.metrics.clone()
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFTracer(&self) -> Arc<DMSCTracer> {
+    pub fn tracer(&self) -> Arc<DMSCTracer> {
         self.tracer.clone()
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFFileSystem(&self) -> &DMSCFileSystem {
+    pub fn file_system(&self) -> &DMSCFileSystem {
         &self.fs
     }
 }
@@ -138,48 +138,48 @@ impl Default for ZiContextConfig {
 
 impl ZiContextConfig {
     #[allow(non_snake_case)]
-    pub fn ZiFNew() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFLogLevel(mut self, level: DMSCLogLevel) -> Self {
+    pub fn log_level(mut self, level: DMSCLogLevel) -> Self {
         self.log_level = level;
         self
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFConsoleEnabled(mut self, enabled: bool) -> Self {
+    pub fn console_enabled(mut self, enabled: bool) -> Self {
         self.console_enabled = enabled;
         self
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFFileEnabled(mut self, enabled: bool) -> Self {
+    pub fn file_enabled(mut self, enabled: bool) -> Self {
         self.file_enabled = enabled;
         self
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFLogFileName(mut self, name: &str) -> Self {
+    pub fn log_file_name(mut self, name: &str) -> Self {
         self.log_file_name = name.to_string();
         self
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFCacheEnabled(mut self, enabled: bool) -> Self {
+    pub fn cache_enabled(mut self, enabled: bool) -> Self {
         self.cache_enabled = enabled;
         self
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFCacheTtlSecs(mut self, secs: u64) -> Self {
+    pub fn cache_ttl_secs(mut self, secs: u64) -> Self {
         self.cache_ttl_secs = secs;
         self
     }
 
     #[allow(non_snake_case)]
-    pub fn ZiFCacheMaxMemoryMb(mut self, mb: usize) -> Self {
+    pub fn cache_max_memory_mb(mut self, mb: usize) -> Self {
         self.cache_max_memory_mb = mb;
         self
     }

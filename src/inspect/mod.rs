@@ -18,13 +18,18 @@
 pub mod profile;
 pub mod diff;
 pub mod statistics;
+pub mod distribution;
 
 pub use profile::{
-    ZiCProfileReport, ZiCProfiler, ZiCFieldProfile, ZiCAnomaly, ZiCAnomalySeverity,
-    ZiCTextStatistics, ZiCProfilerConfig,
+    ZiProfileReport, ZiProfiler, ZiFieldProfile, ZiAnomaly, ZiAnomalySeverity,
+    ZiTextStatistics, ZiProfilerConfig,
 };
 pub use diff::{
-    ZiCDiffReport, ZiCDiffer, ZiCDiffChange, ZiCChangeType, ZiCDiffStats,
-    ZiCFieldChange, ZiCRecordDiff, ZiCDifferConfig,
+    ZiDiffReport, ZiDiffer, ZiDiffChange, ZiChangeType, ZiDiffStats,
+    ZiFieldChange, ZiRecordDiff, ZiDifferConfig,
 };
-pub use statistics::ZiCStatistics;
+pub use statistics::ZiStatistics;
+pub use distribution::{
+    ZiDistributionAnalyzer, ZiDistributionReport, ZiCorrelation,
+    ZiHistogram, ZiHistogramBin, ZiPercentiles, ZiValueDistribution,
+};

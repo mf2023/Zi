@@ -4,7 +4,7 @@
 //! The Zi project belongs to the Dunimd project team.
 //!
 //! Licensed under the Apache License, Version 2.0 (the "License");
-//! you may not use this file except in compliance with the License.
+//! You may not use this file except in compliance with the License.
 //! You may obtain a copy of the License at
 //!
 //!     http://www.apache.org/licenses/LICENSE-2.0
@@ -19,17 +19,17 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::errors::{Result, ZiError};
-use crate::record::{ZiCRecord, ZiCRecordBatch};
-use crate::operator::ZiCOperator;
+use crate::record::{ZiRecord, ZiRecordBatch};
+use crate::operator::ZiOperator;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ZiCTokenCountConfig {
+pub struct ZiTokenCountConfig {
     pub text_field: String,
     pub output_field: String,
     pub model: Option<String>,
 }
 
-impl Default for ZiCTokenCountConfig {
+impl Default for ZiTokenCountConfig {
     fn default() -> Self {
         Self {
             text_field: "payload.text".to_string(),
@@ -40,14 +40,14 @@ impl Default for ZiCTokenCountConfig {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ZiCConversationConfig {
+pub struct ZiConversationConfig {
     pub input_field: String,
     pub output_field: String,
-    pub format: ZiCConversationFormat,
+    pub format: ZiConversationFormat,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ZiCConversationFormat {
+pub enum ZiConversationFormat {
     ChatML,
     ShareGPT,
     Alpaca,
@@ -55,77 +55,77 @@ pub enum ZiCConversationFormat {
     Custom { system_key: String, user_key: String, assistant_key: String },
 }
 
-impl Default for ZiCConversationConfig {
+impl Default for ZiConversationConfig {
     fn default() -> Self {
         Self {
             input_field: "payload.conversation".to_string(),
             output_field: "payload.messages".to_string(),
-            format: ZiCConversationFormat::ChatML,
+            format: ZiConversationFormat::ChatML,
         }
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ZiCContextLengthConfig {
+pub struct ZiContextLengthConfig {
     pub text_field: String,
     pub min_tokens: usize,
     pub max_tokens: usize,
-    pub action: ZiCContextLengthAction,
+    pub action: ZiContextLengthAction,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ZiCContextLengthAction {
+pub enum ZiContextLengthAction {
     Filter,
     Truncate { max_tokens: usize },
     Split { max_tokens: usize, overlap: usize },
 }
 
-impl Default for ZiCContextLengthConfig {
+impl Default for ZiContextLengthConfig {
     fn default() -> Self {
         Self {
             text_field: "payload.text".to_string(),
             min_tokens: 0,
             max_tokens: 8192,
-            action: ZiCContextLengthAction::Filter,
+            action: ZiContextLengthAction::Filter,
         }
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ZiCQAExtractConfig {
+pub struct ZiQAExtractConfig {
     pub text_field: String,
     pub output_field: String,
-    pub pattern: ZiCQAPattern,
+    pub pattern: ZiQAPattern,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ZiCQAPattern {
+pub enum ZiQAPattern {
     Auto,
     MarkdownQA,
     NumberedQA,
     Custom { question_pattern: String, answer_pattern: String },
 }
 
-impl Default for ZiCQAExtractConfig {
+impl Default for ZiQAExtractConfig {
     fn default() -> Self {
         Self {
             text_field: "payload.text".to_string(),
             output_field: "payload.qa_pairs".to_string(),
-            pattern: ZiCQAPattern::Auto,
+            pattern: ZiQAPattern::Auto,
         }
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ZiCInstructionFormatConfig {
+pub struct ZiInstructionFormatConfig {
     pub instruction_field: String,
     pub input_field: Option<String>,
     pub output_field: String,
-    pub format: ZiCInstructionFormat,
+    pub format: ZiInstructionFormat,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ZiCInstructionFormat {
+pub enum ZiInstructionFormat {
     Alpaca,
     Vicuna,
     Llama2,
@@ -133,25 +133,25 @@ pub enum ZiCInstructionFormat {
     Custom { template: String },
 }
 
-impl Default for ZiCInstructionFormatConfig {
+impl Default for ZiInstructionFormatConfig {
     fn default() -> Self {
         Self {
             instruction_field: "payload.instruction".to_string(),
             input_field: Some("payload.input".to_string()),
             output_field: "payload.formatted".to_string(),
-            format: ZiCInstructionFormat::Alpaca,
+            format: ZiInstructionFormat::Alpaca,
         }
     }
 }
 
 #[derive(Debug)]
-pub struct ZiCTokenCounter {
-    config: ZiCTokenCountConfig,
+pub struct ZiTokenCounter {
+    config: ZiTokenCountConfig,
 }
 
-impl ZiCTokenCounter {
+impl ZiTokenCounter {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(config: ZiCTokenCountConfig) -> Self {
+    pub fn new(config: ZiTokenCountConfig) -> Self {
         Self { config }
     }
 
@@ -166,12 +166,12 @@ impl ZiCTokenCounter {
     }
 }
 
-impl ZiCOperator for ZiCTokenCounter {
+impl ZiOperator for ZiTokenCounter {
     fn name(&self) -> &'static str {
         "llm.token_count"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         batch.into_iter().map(|record| {
             let text = self.extract_text(&record)?;
             let token_count = self.estimate_tokens(&text);
@@ -180,8 +180,8 @@ impl ZiCOperator for ZiCTokenCounter {
     }
 }
 
-impl ZiCTokenCounter {
-    fn extract_text(&self, record: &ZiCRecord) -> Result<String> {
+impl ZiTokenCounter {
+    fn extract_text(&self, record: &ZiRecord) -> Result<String> {
         let parts: Vec<&str> = self.config.text_field.split('.').collect();
         
         let mut current = &record.payload;
@@ -206,7 +206,7 @@ impl ZiCTokenCounter {
         }
     }
 
-    fn set_token_count(&self, mut record: ZiCRecord, count: usize) -> Result<ZiCRecord> {
+    fn set_token_count(&self, mut record: ZiRecord, count: usize) -> Result<ZiRecord> {
         let parts: Vec<&str> = self.config.output_field.split('.').collect();
         
         if parts.len() < 2 {
@@ -214,7 +214,7 @@ impl ZiCTokenCounter {
         }
 
         if parts[0] == "metadata" {
-            record.ZiFMetadataMut()
+            record.metadata_mut()
                 .insert(parts[1].to_string(), Value::Number(count.into()));
         }
 
@@ -223,30 +223,30 @@ impl ZiCTokenCounter {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFTokenCountFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
-    let config: ZiCTokenCountConfig = serde_json::from_value(config.clone())
+pub fn token_count_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
+    let config: ZiTokenCountConfig = serde_json::from_value(config.clone())
         .map_err(|e| ZiError::validation(format!("Invalid token count config: {}", e)))?;
-    Ok(Box::new(ZiCTokenCounter::ZiFNew(config)))
+    Ok(Box::new(ZiTokenCounter::new(config)))
 }
 
 #[derive(Debug)]
-pub struct ZiCConversationFormatter {
-    config: ZiCConversationConfig,
+pub struct ZiConversationFormatter {
+    config: ZiConversationConfig,
 }
 
-impl ZiCConversationFormatter {
+impl ZiConversationFormatter {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(config: ZiCConversationConfig) -> Self {
+    pub fn new(config: ZiConversationConfig) -> Self {
         Self { config }
     }
 
     fn format_conversation(&self, conv: &Value) -> Result<Vec<Value>> {
         match &self.config.format {
-            ZiCConversationFormat::ChatML => self.to_chatml(conv),
-            ZiCConversationFormat::ShareGPT => self.to_sharegpt(conv),
-            ZiCConversationFormat::Alpaca => self.to_alpaca(conv),
-            ZiCConversationFormat::OpenAI => self.to_openai(conv),
-            ZiCConversationFormat::Custom { system_key, user_key, assistant_key } => {
+            ZiConversationFormat::ChatML => self.to_chatml(conv),
+            ZiConversationFormat::ShareGPT => self.to_sharegpt(conv),
+            ZiConversationFormat::Alpaca => self.to_alpaca(conv),
+            ZiConversationFormat::OpenAI => self.to_openai(conv),
+            ZiConversationFormat::Custom { system_key, user_key, assistant_key } => {
                 self.to_custom(conv, system_key, user_key, assistant_key)
             }
         }
@@ -360,12 +360,12 @@ impl ZiCConversationFormatter {
     }
 }
 
-impl ZiCOperator for ZiCConversationFormatter {
+impl ZiOperator for ZiConversationFormatter {
     fn name(&self) -> &'static str {
         "llm.conversation_format"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         batch.into_iter().map(|mut record| {
             let conv = self.extract_conversation(&record)?;
             let messages = self.format_conversation(&conv)?;
@@ -375,8 +375,8 @@ impl ZiCOperator for ZiCConversationFormatter {
     }
 }
 
-impl ZiCConversationFormatter {
-    fn extract_conversation(&self, record: &ZiCRecord) -> Result<Value> {
+impl ZiConversationFormatter {
+    fn extract_conversation(&self, record: &ZiRecord) -> Result<Value> {
         let parts: Vec<&str> = self.config.input_field.split('.').collect();
         
         let mut current = &record.payload;
@@ -392,7 +392,7 @@ impl ZiCConversationFormatter {
         Ok(current.clone())
     }
 
-    fn set_messages(&self, record: &mut ZiCRecord, messages: Vec<Value>) -> Result<()> {
+    fn set_messages(&self, record: &mut ZiRecord, messages: Vec<Value>) -> Result<()> {
         let parts: Vec<&str> = self.config.output_field.split('.').collect();
         
         if parts.len() < 2 {
@@ -408,20 +408,20 @@ impl ZiCConversationFormatter {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFConversationFormatFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
-    let config: ZiCConversationConfig = serde_json::from_value(config.clone())
+pub fn conversation_format_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
+    let config: ZiConversationConfig = serde_json::from_value(config.clone())
         .map_err(|e| ZiError::validation(format!("Invalid conversation config: {}", e)))?;
-    Ok(Box::new(ZiCConversationFormatter::ZiFNew(config)))
+    Ok(Box::new(ZiConversationFormatter::new(config)))
 }
 
 #[derive(Debug)]
-pub struct ZiCContextLengthFilter {
-    config: ZiCContextLengthConfig,
+pub struct ZiContextLengthFilter {
+    config: ZiContextLengthConfig,
 }
 
-impl ZiCContextLengthFilter {
+impl ZiContextLengthFilter {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(config: ZiCContextLengthConfig) -> Self {
+    pub fn new(config: ZiContextLengthConfig) -> Self {
         Self { config }
     }
 
@@ -432,7 +432,7 @@ impl ZiCContextLengthFilter {
         ((chinese_chars as f64 * 0.6 + english_words as f64 * 1.3).ceil() as usize).max(1)
     }
 
-    fn extract_text(&self, record: &ZiCRecord) -> String {
+    fn extract_text(&self, record: &ZiRecord) -> String {
         let parts: Vec<&str> = self.config.text_field.split('.').collect();
         
         let mut current = &record.payload;
@@ -452,14 +452,14 @@ impl ZiCContextLengthFilter {
     }
 }
 
-impl ZiCOperator for ZiCContextLengthFilter {
+impl ZiOperator for ZiContextLengthFilter {
     fn name(&self) -> &'static str {
         "llm.context_length"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         match &self.config.action {
-            ZiCContextLengthAction::Filter => {
+            ZiContextLengthAction::Filter => {
                 Ok(batch.into_iter()
                     .filter(|record| {
                         let text = self.extract_text(record);
@@ -468,7 +468,7 @@ impl ZiCOperator for ZiCContextLengthFilter {
                     })
                     .collect())
             }
-            ZiCContextLengthAction::Truncate { max_tokens } => {
+            ZiContextLengthAction::Truncate { max_tokens } => {
                 batch.into_iter()
                     .map(|mut record| {
                         let text = self.extract_text(&record);
@@ -481,7 +481,7 @@ impl ZiCOperator for ZiCContextLengthFilter {
                     })
                     .collect()
             }
-            ZiCContextLengthAction::Split { max_tokens, overlap } => {
+            ZiContextLengthAction::Split { max_tokens, overlap } => {
                 let mut results = Vec::new();
                 for record in batch {
                     let text = self.extract_text(&record);
@@ -507,7 +507,7 @@ impl ZiCOperator for ZiCContextLengthFilter {
     }
 }
 
-impl ZiCContextLengthFilter {
+impl ZiContextLengthFilter {
     fn truncate_text(&self, text: &str, max_tokens: usize) -> String {
         let chars_per_token = text.chars().count() as f64 / self.estimate_tokens(text) as f64;
         let max_chars = (max_tokens as f64 * chars_per_token) as usize;
@@ -538,7 +538,7 @@ impl ZiCContextLengthFilter {
         chunks
     }
 
-    fn set_text(&self, record: &mut ZiCRecord, text: String) -> Result<()> {
+    fn set_text(&self, record: &mut ZiRecord, text: String) -> Result<()> {
         let parts: Vec<&str> = self.config.text_field.split('.').collect();
         
         if parts.len() >= 2 {
@@ -552,26 +552,26 @@ impl ZiCContextLengthFilter {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFContextLengthFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
-    let config: ZiCContextLengthConfig = serde_json::from_value(config.clone())
+pub fn context_length_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
+    let config: ZiContextLengthConfig = serde_json::from_value(config.clone())
         .map_err(|e| ZiError::validation(format!("Invalid context length config: {}", e)))?;
-    Ok(Box::new(ZiCContextLengthFilter::ZiFNew(config)))
+    Ok(Box::new(ZiContextLengthFilter::new(config)))
 }
 
 #[derive(Debug)]
-pub struct ZiCQAExtractor {
-    config: ZiCQAExtractConfig,
+pub struct ZiQAExtractor {
+    config: ZiQAExtractConfig,
 }
 
-impl ZiCQAExtractor {
+impl ZiQAExtractor {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(config: ZiCQAExtractConfig) -> Self {
+    pub fn new(config: ZiQAExtractConfig) -> Self {
         Self { config }
     }
 
     fn extract_qa_pairs(&self, text: &str) -> Vec<Value> {
         match &self.config.pattern {
-            ZiCQAPattern::Auto => {
+            ZiQAPattern::Auto => {
                 if self.looks_like_markdown_qa(text) {
                     self.extract_markdown_qa(text)
                 } else if self.looks_like_numbered_qa(text) {
@@ -580,9 +580,9 @@ impl ZiCQAExtractor {
                     self.extract_heuristic_qa(text)
                 }
             }
-            ZiCQAPattern::MarkdownQA => self.extract_markdown_qa(text),
-            ZiCQAPattern::NumberedQA => self.extract_numbered_qa(text),
-            ZiCQAPattern::Custom { question_pattern, answer_pattern } => {
+            ZiQAPattern::MarkdownQA => self.extract_markdown_qa(text),
+            ZiQAPattern::NumberedQA => self.extract_numbered_qa(text),
+            ZiQAPattern::Custom { question_pattern, answer_pattern } => {
                 self.extract_custom_qa(text, question_pattern, answer_pattern)
             }
         }
@@ -718,12 +718,12 @@ impl ZiCQAExtractor {
     }
 }
 
-impl ZiCOperator for ZiCQAExtractor {
+impl ZiOperator for ZiQAExtractor {
     fn name(&self) -> &'static str {
         "llm.qa_extract"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         batch.into_iter().map(|mut record| {
             let text = self.extract_text(&record);
             let qa_pairs = self.extract_qa_pairs(&text);
@@ -733,8 +733,8 @@ impl ZiCOperator for ZiCQAExtractor {
     }
 }
 
-impl ZiCQAExtractor {
-    fn extract_text(&self, record: &ZiCRecord) -> String {
+impl ZiQAExtractor {
+    fn extract_text(&self, record: &ZiRecord) -> String {
         let parts: Vec<&str> = self.config.text_field.split('.').collect();
         
         let mut current = &record.payload;
@@ -753,7 +753,7 @@ impl ZiCQAExtractor {
         }
     }
 
-    fn set_qa_pairs(&self, record: &mut ZiCRecord, pairs: Vec<Value>) -> Result<()> {
+    fn set_qa_pairs(&self, record: &mut ZiRecord, pairs: Vec<Value>) -> Result<()> {
         let parts: Vec<&str> = self.config.output_field.split('.').collect();
         
         if parts.len() >= 2 {
@@ -767,31 +767,31 @@ impl ZiCQAExtractor {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFQAExtractFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
-    let config: ZiCQAExtractConfig = serde_json::from_value(config.clone())
+pub fn q_a_extract_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
+    let config: ZiQAExtractConfig = serde_json::from_value(config.clone())
         .map_err(|e| ZiError::validation(format!("Invalid QA extract config: {}", e)))?;
-    Ok(Box::new(ZiCQAExtractor::ZiFNew(config)))
+    Ok(Box::new(ZiQAExtractor::new(config)))
 }
 
 #[derive(Debug)]
-pub struct ZiCInstructionFormatter {
-    config: ZiCInstructionFormatConfig,
+pub struct ZiInstructionFormatter {
+    config: ZiInstructionFormatConfig,
 }
 
-impl ZiCInstructionFormatter {
+impl ZiInstructionFormatter {
     #[allow(non_snake_case)]
-    pub fn ZiFNew(config: ZiCInstructionFormatConfig) -> Self {
+    pub fn new(config: ZiInstructionFormatConfig) -> Self {
         Self { config }
     }
 
-    fn format_instruction(&self, record: &ZiCRecord) -> Result<String> {
+    fn format_instruction(&self, record: &ZiRecord) -> Result<String> {
         let instruction = self.extract_field(record, &self.config.instruction_field);
         let input = self.config.input_field.as_ref()
             .map(|f| self.extract_field(record, f))
             .unwrap_or_default();
 
         match &self.config.format {
-            ZiCInstructionFormat::Alpaca => {
+            ZiInstructionFormat::Alpaca => {
                 if input.is_empty() {
                     Ok(format!(
                         "### Instruction:\n{}\n\n### Response:\n",
@@ -804,19 +804,19 @@ impl ZiCInstructionFormatter {
                     ))
                 }
             }
-            ZiCInstructionFormat::Vicuna => {
+            ZiInstructionFormat::Vicuna => {
                 Ok(format!(
                     "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions.\n\nUSER: {}\nASSISTANT:",
                     instruction
                 ))
             }
-            ZiCInstructionFormat::Llama2 => {
+            ZiInstructionFormat::Llama2 => {
                 Ok(format!(
                     "<s>[INST] {} [/INST]",
                     instruction
                 ))
             }
-            ZiCInstructionFormat::ChatML => {
+            ZiInstructionFormat::ChatML => {
                 if input.is_empty() {
                     Ok(format!(
                         "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
@@ -829,7 +829,7 @@ impl ZiCInstructionFormatter {
                     ))
                 }
             }
-            ZiCInstructionFormat::Custom { template } => {
+            ZiInstructionFormat::Custom { template } => {
                 let mut result = template.clone();
                 result = result.replace("{{instruction}}", &instruction);
                 result = result.replace("{{input}}", &input);
@@ -838,7 +838,7 @@ impl ZiCInstructionFormatter {
         }
     }
 
-    fn extract_field(&self, record: &ZiCRecord, field: &str) -> String {
+    fn extract_field(&self, record: &ZiRecord, field: &str) -> String {
         let parts: Vec<&str> = field.split('.').collect();
         
         let mut current = &record.payload;
@@ -858,12 +858,12 @@ impl ZiCInstructionFormatter {
     }
 }
 
-impl ZiCOperator for ZiCInstructionFormatter {
+impl ZiOperator for ZiInstructionFormatter {
     fn name(&self) -> &'static str {
         "llm.instruction_format"
     }
 
-    fn apply(&self, batch: ZiCRecordBatch) -> Result<ZiCRecordBatch> {
+    fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         batch.into_iter().map(|mut record| {
             let formatted = self.format_instruction(&record)?;
             self.set_formatted(&mut record, formatted)?;
@@ -872,8 +872,8 @@ impl ZiCOperator for ZiCInstructionFormatter {
     }
 }
 
-impl ZiCInstructionFormatter {
-    fn set_formatted(&self, record: &mut ZiCRecord, text: String) -> Result<()> {
+impl ZiInstructionFormatter {
+    fn set_formatted(&self, record: &mut ZiRecord, text: String) -> Result<()> {
         let parts: Vec<&str> = self.config.output_field.split('.').collect();
         
         if parts.len() >= 2 {
@@ -887,8 +887,8 @@ impl ZiCInstructionFormatter {
 }
 
 #[allow(non_snake_case)]
-pub fn ZiFInstructionFormatFactory(config: &Value) -> Result<Box<dyn ZiCOperator + Send + Sync>> {
-    let config: ZiCInstructionFormatConfig = serde_json::from_value(config.clone())
+pub fn instruction_format_factory(config: &Value) -> Result<Box<dyn ZiOperator + Send + Sync>> {
+    let config: ZiInstructionFormatConfig = serde_json::from_value(config.clone())
         .map_err(|e| ZiError::validation(format!("Invalid instruction format config: {}", e)))?;
-    Ok(Box::new(ZiCInstructionFormatter::ZiFNew(config)))
+    Ok(Box::new(ZiInstructionFormatter::new(config)))
 }
