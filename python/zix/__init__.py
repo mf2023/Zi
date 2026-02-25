@@ -160,14 +160,14 @@ __license__ = "Apache-2.0"
 # a clean, stable public API.
 #
 # Import Strategy:
-# The 'from zix import ...' syntax imports directly from the compiled
-# extension module (zix.*.so or zix.*.pyd), which contains the PyO3 bindings.
+# The 'from _zix import ...' syntax imports directly from the compiled
+# extension module (_zix.*.so or _zix.*.pyd), which contains the PyO3 bindings.
 #
 # All imported symbols are re-exported via __all__ to provide a stable API
 # surface. Users should import these symbols directly from the zix package
 # rather than from the extension module directly.
 
-from zix import (
+from _zix import (
     # ZiRecord: Core data structure representing a single data record
     # Used as the fundamental unit of data throughout the framework
     # Supports various payload types (JSON, string, binary)

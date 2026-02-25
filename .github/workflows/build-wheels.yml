@@ -162,7 +162,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: rust-linux-x64
-          path: target/release/libZi.*
+          path: target/release/libzix.*
 
   # ------------------------------------------------------------------------------
   # Build Rust Library for Linux ARM64 (aarch64)
@@ -199,7 +199,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: rust-linux-arm64
-          path: target/aarch64-unknown-linux-gnu/release/libZi.*
+          path: target/aarch64-unknown-linux-gnu/release/libzix.*
 
   # ------------------------------------------------------------------------------
   # Build Rust Library for Windows x86_64
@@ -229,7 +229,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: rust-windows-x64
-          path: target/release/Zi.lib
+          path: target/release/zix.*
 
   # ------------------------------------------------------------------------------
   # Build Rust Library for macOS x86_64 (Intel)
@@ -269,7 +269,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: rust-macos-x64
-          path: target/x86_64-apple-darwin/release/libZi.*
+          path: target/x86_64-apple-darwin/release/libzix.*
 
   # ------------------------------------------------------------------------------
   # Build Rust Library for macOS ARM64 (Apple Silicon)
@@ -305,7 +305,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: rust-macos-arm64
-          path: target/aarch64-unknown-linux-gnu/release/libZi.*
+          path: target/aarch64-apple-darwin/release/libzix.*
 
   ################################################################################
   # Phase 2: Build Python Wheels (Matrix)

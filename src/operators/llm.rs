@@ -22,6 +22,17 @@ use crate::errors::{Result, ZiError};
 use crate::record::{ZiRecord, ZiRecordBatch};
 use crate::operator::ZiOperator;
 
+const CHARS_PER_CHINESE_TOKEN: f64 = 0.6;
+const CHARS_PER_ENGLISH_TOKEN: f64 = 1.3;
+
+pub fn estimate_tokens(text: &str) -> usize {
+    let word_count = text.split_whitespace().count();
+    let chinese_chars = text.chars().filter(|c| '\u{4e00}' <= *c && *c <= '\u{9fff}').count();
+    let english_words = word_count.saturating_sub(chinese_chars / 2);
+    let estimated = (chinese_chars as f64 * CHARS_PER_CHINESE_TOKEN + english_words as f64 * CHARS_PER_ENGLISH_TOKEN).ceil() as usize;
+    estimated.max(1)
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ZiTokenCountConfig {
     pub text_field: String,
@@ -154,16 +165,6 @@ impl ZiTokenCounter {
     pub fn new(config: ZiTokenCountConfig) -> Self {
         Self { config }
     }
-
-    fn estimate_tokens(&self, text: &str) -> usize {
-        let word_count = text.split_whitespace().count();
-        
-        let chinese_chars = text.chars().filter(|c| '\u{4e00}' <= *c && *c <= '\u{9fff}').count();
-        let english_words = word_count - chinese_chars / 2;
-        
-        let estimated = (chinese_chars as f64 * 0.6 + english_words as f64 * 1.3).ceil() as usize;
-        estimated.max(1)
-    }
 }
 
 impl ZiOperator for ZiTokenCounter {
@@ -174,7 +175,7 @@ impl ZiOperator for ZiTokenCounter {
     fn apply(&self, batch: ZiRecordBatch) -> Result<ZiRecordBatch> {
         batch.into_iter().map(|record| {
             let text = self.extract_text(&record)?;
-            let token_count = self.estimate_tokens(&text);
+            let token_count = estimate_tokens(&text);
             self.set_token_count(record, token_count)
         }).collect()
     }
@@ -425,13 +426,6 @@ impl ZiContextLengthFilter {
         Self { config }
     }
 
-    fn estimate_tokens(&self, text: &str) -> usize {
-        let word_count = text.split_whitespace().count();
-        let chinese_chars = text.chars().filter(|c| '\u{4e00}' <= *c && *c <= '\u{9fff}').count();
-        let english_words = word_count - chinese_chars / 2;
-        ((chinese_chars as f64 * 0.6 + english_words as f64 * 1.3).ceil() as usize).max(1)
-    }
-
     fn extract_text(&self, record: &ZiRecord) -> String {
         let parts: Vec<&str> = self.config.text_field.split('.').collect();
         
@@ -463,7 +457,7 @@ impl ZiOperator for ZiContextLengthFilter {
                 Ok(batch.into_iter()
                     .filter(|record| {
                         let text = self.extract_text(record);
-                        let tokens = self.estimate_tokens(&text);
+                        let tokens = estimate_tokens(&text);
                         tokens >= self.config.min_tokens && tokens <= self.config.max_tokens
                     })
                     .collect())
@@ -472,7 +466,7 @@ impl ZiOperator for ZiContextLengthFilter {
                 batch.into_iter()
                     .map(|mut record| {
                         let text = self.extract_text(&record);
-                        let tokens = self.estimate_tokens(&text);
+                        let tokens = estimate_tokens(&text);
                         if tokens > *max_tokens {
                             let truncated = self.truncate_text(&text, *max_tokens);
                             self.set_text(&mut record, truncated)?;
@@ -485,7 +479,7 @@ impl ZiOperator for ZiContextLengthFilter {
                 let mut results = Vec::new();
                 for record in batch {
                     let text = self.extract_text(&record);
-                    let tokens = self.estimate_tokens(&text);
+                    let tokens = estimate_tokens(&text);
                     
                     if tokens <= *max_tokens {
                         results.push(record);
@@ -509,13 +503,13 @@ impl ZiOperator for ZiContextLengthFilter {
 
 impl ZiContextLengthFilter {
     fn truncate_text(&self, text: &str, max_tokens: usize) -> String {
-        let chars_per_token = text.chars().count() as f64 / self.estimate_tokens(text) as f64;
+        let chars_per_token = text.chars().count() as f64 / estimate_tokens(text) as f64;
         let max_chars = (max_tokens as f64 * chars_per_token) as usize;
         text.chars().take(max_chars).collect()
     }
 
     fn split_text(&self, text: &str, max_tokens: usize, overlap: usize) -> Vec<String> {
-        let chars_per_token = text.chars().count() as f64 / self.estimate_tokens(text) as f64;
+        let chars_per_token = text.chars().count() as f64 / estimate_tokens(text) as f64;
         let chunk_size = (max_tokens as f64 * chars_per_token) as usize;
         let overlap_chars = (overlap as f64 * chars_per_token) as usize;
         

@@ -1128,7 +1128,7 @@ pub mod py {
     // =============================================================================
 
     #[pymodule]
-    pub fn zix(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    pub fn _zix(m: &Bound<'_, PyModule>) -> PyResult<()> {
         // Core classes
         m.add_class::<ZiRecordPy>()?;
         m.add_class::<ZiMetrics>()?;
