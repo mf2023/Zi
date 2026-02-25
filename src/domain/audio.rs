@@ -69,12 +69,24 @@ use std::hash::{Hash, Hasher};
 /// - `has_vad`: Whether Voice Activity Detection has been performed
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AudioEncoding {
+    /// Audio compression codec (PCM, MP3, AAC, Opus, FLAC, etc.)
     pub codec: AudioCodec,
+    /// Number of samples per second in Hertz (Hz)
+    /// Common values: 8000 (telephone), 16000 (VOIP), 44100 (CD), 48000 (professional)
     pub sample_rate: u32,
+    /// Number of audio channels
+    /// 1 = mono, 2 = stereo, 6 = 5.1 surround, 8 = 7.1 surround
     pub channels: u16,
+    /// Bits per sample (precision of each audio sample)
+    /// Common values: 8, 16 (CD quality), 24 (professional), 32 (floating point)
     pub bit_depth: u16,
+    /// Optional bit rate in bits per second for compressed formats
+    /// For uncompressed formats, this is calculated from sample_rate * channels * bit_depth
     pub bit_rate: Option<u32>,
+    /// Total duration of the audio in milliseconds
     pub duration_ms: u64,
+    /// Whether Voice Activity Detection has been performed on this audio
+    /// When true, vad_regions in AudioPayload contains the VAD results
     pub has_vad: bool,
 }
 
@@ -232,9 +244,14 @@ impl Hash for AudioEncoding {
 /// - `vad_regions`: Voice Activity Detection regions if VAD has been performed
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioPayload {
+    /// Raw audio data bytes encoded according to the codec and format in encoding
     pub data: Vec<u8>,
+    /// Audio encoding metadata including codec, sample rate, channels, duration, etc.
     pub encoding: AudioEncoding,
+    /// Optional URI pointing to external audio resource (for streaming or referenced audio)
     pub uri: Option<String>,
+    /// Voice Activity Detection regions if VAD has been performed
+    /// Contains time ranges where speech was detected with confidence scores
     pub vad_regions: Vec<VADRegion>,
 }
 
@@ -246,15 +263,19 @@ pub struct AudioPayload {
 ///
 /// # Fields
 ///
-/// - `start_ms`: Start timestamp in milliseconds
-/// - `end_ms`: End timestamp in milliseconds
-/// - `confidence`: Detection confidence score (0.0 to 1.0)
-/// - `speech`: true if speech was detected, false for silence/noise
+/// - `start_ms`: Start timestamp in milliseconds from the beginning of the audio
+/// - `end_ms`: End timestamp in milliseconds from the beginning of the audio
+/// - `confidence`: Detection confidence score ranging from 0.0 (no confidence) to 1.0 (maximum confidence)
+/// - `speech`: Boolean flag indicating whether speech was detected (true) or silence/noise (false)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VADRegion {
+    /// Start timestamp in milliseconds
     pub start_ms: u64,
+    /// End timestamp in milliseconds
     pub end_ms: u64,
+    /// Voice activity detection confidence score (0.0 to 1.0)
     pub confidence: f32,
+    /// Whether speech was detected in this region
     pub speech: bool,
 }
 

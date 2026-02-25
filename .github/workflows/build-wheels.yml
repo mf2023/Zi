@@ -4,7 +4,7 @@
 # The Zi project belongs to the Dunimd team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
+# You may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
@@ -40,10 +40,32 @@
 # Trigger Conditions:
 # - Automatic: On push to master branch or release published
 # - Manual: Workflow dispatch allows manual execution
+#
+# Pipeline Phases:
+# 1. Phase 1: Build Rust Libraries (Parallel) - Compiles native Rust libraries
+#             for all supported platforms in parallel for efficiency
+# 2. Phase 2: Build Python Wheels (Matrix) - Uses matrix strategy to build
+#             wheels for all platform/Python version combinations
+# 3. Phase 3: Tests - Runs both Rust and Python tests to verify functionality
 ################################################################################
 
 name: Build and Publish Zi (Rust/Python)
 
+# ================================================================================
+# Trigger Configuration
+# ================================================================================
+#
+# Defines when the workflow should be automatically or manually triggered.
+#
+# push.branches: Triggers on push events to master or main branches.
+#                This ensures every commit to the main branch gets built and tested.
+#
+# release.types: Triggers when a release is published. This is the primary
+#                trigger for creating production builds and publishing to PyPI.
+#
+# workflow_dispatch: Enables manual triggering through the GitHub UI.
+#                    This is useful for testing specific configurations or
+#                    rebuilding without pushing new code.
 on:
   push:
     branches:
@@ -53,6 +75,27 @@ on:
     types: [published]
   workflow_dispatch:
 
+# ================================================================================
+# Global Environment Variables
+# ================================================================================
+#
+# These environment variables are available to all jobs in the workflow.
+# They configure Cargo and Rust behavior for consistent builds.
+#
+# CARGO_TERM_COLOR: always - Always colorize Cargo output, useful for
+#                   debugging build issues in CI logs
+#
+# RUST_BACKTRACE: 1 - Enables full backtraces when Rust programs panic,
+#                  essential for debugging crashes in CI environment
+#
+# CARGO_INCREMENTAL: 0 - Disables incremental compilation in CI to ensure
+#                     consistent builds and avoid cache-related issues
+#
+# CARGO_NET_RETRY: 10 - Maximum number of network retries for dependency
+#                    fetching, provides resilience against network issues
+#
+# CARGO_NET_TIMEOUT: 60 - Timeout in seconds for network operations,
+#                     ensures builds don't hang indefinitely
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -64,260 +107,466 @@ jobs:
   ################################################################################
   # Phase 1: Build Rust Libraries (Parallel)
   ################################################################################
+  #
+  # This phase compiles the native Rust library (libZi) for each supported
+  # platform in parallel. Each job builds a single target architecture.
+  # The compiled libraries are saved as artifacts for later use or reference.
+  #
+  # Why parallel builds?
+  # - Faster overall execution time (each architecture builds independently)
+  # - Each runner uses its native toolchain for optimal compatibility
+  # - Architecture-specific optimizations can be applied
+  #
+  # Artifact naming convention: rust-<platform>-<arch>
 
+  # ------------------------------------------------------------------------------
+  # Build Rust Library for Linux x86_64
+  # ------------------------------------------------------------------------------
+  #
+  # Runner: ubuntu-latest (x86_64)
+  # Target: x86_64-unknown-linux-gnu
+  # Output: libZi.* (shared library files)
+  #
+  # Dependencies: OpenSSL and SASL development libraries required for
+  #               certain Rust crates (like reqwest for HTTP)
   build-rust-linux:
     runs-on: ubuntu-latest
     steps:
+      # Checkout the repository at the commit that triggered the workflow
       - uses: actions/checkout@v4
+
+      # Install stable Rust toolchain
+      # Uses dtolnay/rust-toolchain for consistent Rust versions across jobs
       - uses: dtolnay/rust-toolchain@stable
+
+      # Install system dependencies for Linux
+      # libcurl4-openssl-dev: HTTP client library (for network operations)
+      # libsasl2-dev: SASL authentication library (for SMTP, etc.)
+      # libssl-dev: OpenSSL development files (for HTTPS/TLS)
       - run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
+
+      # Cache Cargo registry and build artifacts
+      # Key includes Cargo.lock hash to invalidate cache when dependencies change
+      # This significantly speeds up subsequent builds
       - uses: actions/cache@v4
         with:
           path: ~/.cargo/registry,~/.cargo/git,target
           key: ${{ runner.os }}-cargo-zi-${{ hashFiles('**/Cargo.lock') }}
+
+      # Build the Rust library with full features enabled
+      # The 'full' feature flag enables all library features for comprehensive builds
       - run: cargo build --release --features full
+
+      # Upload the compiled library as an artifact
+      # These artifacts can be downloaded for manual testing if needed
       - uses: actions/upload-artifact@v4
         with:
           name: rust-linux-x64
           path: target/release/libZi.*
 
+  # ------------------------------------------------------------------------------
+  # Build Rust Library for Linux ARM64 (aarch64)
+  # ------------------------------------------------------------------------------
+  #
+  # Runner: ubuntu-24.04-arm (native ARM64 runner)
+  # Target: aarch64-unknown-linux-gnu
+  # Output: libZi.* (ARM64 shared library files)
+  #
+  # Why ubuntu-24.04-arm? Native ARM64 runner provides proper ARM64
+  # compilation environment without cross-compilation complexity
   build-rust-linux-arm64:
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
+
+      # Install stable Rust toolchain with ARM64 target support
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-unknown-linux-gnu
+
+      # Install Linux system dependencies for ARM64
       - run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
+
+      # Cache for ARM64 builds (separate cache from x86_64)
       - uses: actions/cache@v4
         with:
           path: ~/.cargo/registry,~/.cargo/git,target
           key: ${{ runner.os }}-arm64-cargo-zi-${{ hashFiles('**/Cargo.lock') }}
+
+      # Build for ARM64 target
       - run: cargo build --release --target aarch64-unknown-linux-gnu --features full
+
       - uses: actions/upload-artifact@v4
         with:
           name: rust-linux-arm64
           path: target/aarch64-unknown-linux-gnu/release/libZi.*
 
+  # ------------------------------------------------------------------------------
+  # Build Rust Library for Windows x86_64
+  # ------------------------------------------------------------------------------
+  #
+  # Runner: windows-latest
+  # Target: x86_64-pc-windows-msvc (MSVC toolchain)
+  # Output: Zi.lib (static import library for Windows)
+  #
+  # Note: Windows uses MSVC toolchain which produces different output
+  #       (Zi.lib + Zi.dll) compared to Unix systems
   build-rust-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
+
+      # Windows cache (includes target directory for compiled artifacts)
       - uses: actions/cache@v4
         with:
           path: ~/.cargo/registry,~/.cargo/git,target
           key: ${{ runner.os }}-cargo-zi-${{ hashFiles('**/Cargo.lock') }}
+
       - run: cargo build --release --features full
+
       - uses: actions/upload-artifact@v4
         with:
           name: rust-windows-x64
           path: target/release/Zi.lib
 
+  # ------------------------------------------------------------------------------
+  # Build Rust Library for macOS x86_64 (Intel)
+  # ------------------------------------------------------------------------------
+  #
+  # Runner: macos-15-intel (Intel Mac runner)
+  # Target: x86_64-apple-darwin
+  # Output: libZi.* (dylib/shared library files)
+  #
+  # Special configuration: linker flags for dynamic symbol resolution
+  # -undefined dynamic_lookup: Allows symbols to be resolved at runtime
+  #   This is necessary when building Python extensions that may link
+  #   against symbols provided by the Python interpreter
   build-rust-macos:
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-apple-darwin
+
       - uses: actions/cache@v4
         with:
           path: ~/.cargo/registry,~/.cargo/git,target
           key: ${{ runner.os }}-cargo-zi-${{ hashFiles('**/Cargo.lock') }}
+
+      # Configure macOS linker for Python extension compatibility
+      # Creates .cargo/config.toml with special linker flags
       - run: |
           mkdir -p .cargo
           echo '[target.x86_64-apple-darwin]' > .cargo/config.toml
           echo 'rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]' >> .cargo/config.toml
+
       - run: cargo build --release --target x86_64-apple-darwin --features full
+
       - uses: actions/upload-artifact@v4
         with:
           name: rust-macos-x64
           path: target/x86_64-apple-darwin/release/libZi.*
 
+  # ------------------------------------------------------------------------------
+  # Build Rust Library for macOS ARM64 (Apple Silicon)
+  # ------------------------------------------------------------------------------
+  #
+  # Runner: macos-15 (Apple Silicon Mac runner)
+  # Target: aarch64-apple-darwin
+  # Output: libZi.* (dylib/shared library files)
+  #
+  # Same linker configuration as x86_64 for Python extension compatibility
   build-rust-macos-arm64:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin
+
       - uses: actions/cache@v4
         with:
           path: ~/.cargo/registry,~/.cargo/git,target
           key: ${{ runner.os }}-arm64-cargo-zi-${{ hashFiles('**/Cargo.lock') }}
+
+      # Configure ARM64 macOS linker
       - run: |
           mkdir -p .cargo
           echo '[target.aarch64-apple-darwin]' > .cargo/config.toml
           echo 'rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]' >> .cargo/config.toml
+
       - run: cargo build --release --target aarch64-apple-darwin --features full
+
       - uses: actions/upload-artifact@v4
         with:
           name: rust-macos-arm64
-          path: target/aarch64-apple-darwin/release/libZi.*
+          path: target/aarch64-unknown-linux-gnu/release/libZi.*
 
   ################################################################################
   # Phase 2: Build Python Wheels (Matrix)
   ################################################################################
+  #
+  # This phase uses a matrix strategy to build Python wheels for all
+  # combinations of platforms, architectures, and Python versions.
+  #
+  # Matrix Strategy:
+  # - Each matrix entry defines a unique build configuration
+  # - All entries run in parallel (subject to GitHub Actions limits)
+  # - Fail-fast: false allows all builds to complete even if one fails
+  #
+  # Build Tool: maturin
+  # - Official Rust-Python binding tool
+  # - Handles PyO3 integration and wheel building
+  # - Supports manylinux for portable Linux wheels
+  #
+  # Artifacts: Python wheel files (.whl) ready for pip installation
 
+  # ------------------------------------------------------------------------------
+  # Python Wheel Build Job (Matrix)
+  # ------------------------------------------------------------------------------
   build-python:
     runs-on: ${{ matrix.runs-on }}
+
+    # Matrix configuration for all platform/Python combinations
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux x64
+          # ========================================================================
+          # Linux x86_64 Wheels (using Docker)
+          # ========================================================================
+          # Linux x64 builds use Docker with manylinux container for
+          # maximum compatibility across different Linux distributions
+          #
+          # manylinux_2_39: CentOS-based manylinux specification
+          #                    Provides ABI compatibility for most Linux systems
+          #
+          # docker: true - Uses Docker container for consistent build environment
+
           - python: '3.8'
             runs-on: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             manylinux: manylinux_2_39
             docker: true
+
           - python: '3.9'
             runs-on: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             manylinux: manylinux_2_39
             docker: true
+
           - python: '3.10'
             runs-on: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             manylinux: manylinux_2_39
             docker: true
+
           - python: '3.11'
             runs-on: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             manylinux: manylinux_2_39
             docker: true
+
           - python: '3.12'
             runs-on: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             manylinux: manylinux_2_39
             docker: true
+
           - python: '3.13'
             runs-on: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             manylinux: manylinux_2_39
             docker: true
+
           - python: '3.14'
             runs-on: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             manylinux: manylinux_2_39
             docker: true
-          # Linux ARM64
+
+          # ========================================================================
+          # Linux ARM64 Wheels (native build, no Docker)
+          # ========================================================================
+          # ARM64 Linux builds use native ARM64 runners without Docker
+          # This ensures proper ARM64 native compilation
+          #
+          # docker: false - Native build on ARM64 hardware
+
           - python: '3.8'
             runs-on: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             manylinux: manylinux_2_39
             docker: false
+
           - python: '3.9'
             runs-on: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             manylinux: manylinux_2_39
             docker: false
+
           - python: '3.10'
             runs-on: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             manylinux: manylinux_2_39
             docker: false
+
           - python: '3.11'
             runs-on: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             manylinux: manylinux_2_39
             docker: false
+
           - python: '3.12'
             runs-on: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             manylinux: manylinux_2_39
             docker: false
+
           - python: '3.13'
             runs-on: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             manylinux: manylinux_2_39
             docker: false
+
           - python: '3.14'
             runs-on: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             manylinux: manylinux_2_39
             docker: false
-          # Windows x64
+
+          # ========================================================================
+          # Windows x86_64 Wheels
+          # ========================================================================
+          # Windows builds use native Windows runners with MSVC toolchain
+          # Target: x86_64-pc-windows-msvc
+
           - python: '3.8'
             runs-on: windows-latest
             target: x86_64-pc-windows-msvc
+
           - python: '3.9'
             runs-on: windows-latest
             target: x86_64-pc-windows-msvc
+
           - python: '3.10'
             runs-on: windows-latest
             target: x86_64-pc-windows-msvc
+
           - python: '3.11'
             runs-on: windows-latest
             target: x86_64-pc-windows-msvc
+
           - python: '3.12'
             runs-on: windows-latest
             target: x86_64-pc-windows-msvc
+
           - python: '3.13'
             runs-on: windows-latest
             target: x86_64-pc-windows-msvc
+
           - python: '3.14'
             runs-on: windows-latest
             target: x86_64-pc-windows-msvc
-          # macOS x64
+
+          # ========================================================================
+          # macOS x86_64 (Intel) Wheels
+          # ========================================================================
+          # macOS Intel builds use macos-15-intel runner
+          # Target: x86_64-apple-darwin
+
           - python: '3.8'
             runs-on: macos-15-intel
             target: x86_64-apple-darwin
+
           - python: '3.9'
             runs-on: macos-15-intel
             target: x86_64-apple-darwin
+
           - python: '3.10'
             runs-on: macos-15-intel
             target: x86_64-apple-darwin
+
           - python: '3.11'
             runs-on: macos-15-intel
             target: x86_64-apple-darwin
+
           - python: '3.12'
             runs-on: macos-15-intel
             target: x86_64-apple-darwin
+
           - python: '3.13'
             runs-on: macos-15-intel
             target: x86_64-apple-darwin
+
           - python: '3.14'
             runs-on: macos-15-intel
             target: x86_64-apple-darwin
-          # macOS ARM64
+
+          # ========================================================================
+          # macOS ARM64 (Apple Silicon) Wheels
+          # ========================================================================
+          # macOS ARM64 builds use macos-15 runner (Apple Silicon)
+          # Target: aarch64-apple-darwin
+
           - python: '3.8'
             runs-on: macos-15
             target: aarch64-apple-darwin
+
           - python: '3.9'
             runs-on: macos-15
             target: aarch64-apple-darwin
+
           - python: '3.10'
             runs-on: macos-15
             target: aarch64-apple-darwin
+
           - python: '3.11'
             runs-on: macos-15
             target: aarch64-apple-darwin
+
           - python: '3.12'
             runs-on: macos-15
             target: aarch64-apple-darwin
+
           - python: '3.13'
             runs-on: macos-15
             target: aarch64-apple-darwin
+
           - python: '3.14'
             runs-on: macos-15
             target: aarch64-apple-darwin
+
+    # ========================================================================
+    # Build Steps (common to all matrix entries)
+    # ========================================================================
 
     steps:
+      # Checkout repository
       - uses: actions/checkout@v4
 
+      # Set up Python environment
+      # Uses specified Python version from matrix
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
 
+      # Set up Rust toolchain
+      # Uses stable Rust with maturin support
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
 
+      # Configure macOS linker for Python extension compatibility
+      # Applies only to macOS runners
+      # Creates temporary .cargo/config.toml with proper linker flags
       - name: Configure macOS linker
         if: runner.os == 'macOS'
         run: |
@@ -328,38 +577,58 @@ jobs:
           echo '[target.aarch64-apple-darwin]' >> .cargo/config.toml
           echo 'rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]' >> .cargo/config.toml
 
+      # Cache pip packages for faster dependency installation
+      # Different cache paths for different operating systems
       - name: Cache pip packages
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip,~/Library/Caches/pip,~\AppData\Local\pip\Cache
           key: pip-${{ matrix.python }}-${{ matrix.target }}-${{ hashFiles('**/pyproject.toml', '**/Cargo.toml') }}
 
+      # Cache Rust dependencies
+      # Key includes Cargo.toml hash to invalidate when dependencies change
       - name: Cache Rust dependencies
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry,~/.cargo/git,target
           key: rust-${{ matrix.target }}-${{ hashFiles('**/Cargo.toml') }}
 
+      # Install system dependencies for Linux builds
+      # Required for network-related Rust crates
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
 
+      # Upgrade pip and configure package index
+      # Uses Tsinghua mirror for faster downloads in China region
       - name: Upgrade pip
         run: |
           python -m pip install --upgrade pip setuptools wheel
           pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
+      # Install maturin build tool
+      # maturin is the recommended tool for building Python extensions in Rust
+      # It handles PyO3 integration and wheel creation
       - name: Install dependencies
         run: pip install maturin -i https://pypi.org/simple --quiet
 
+      # Build wheel for Linux (with Docker/manylinux)
+      # --release: Production build with optimizations
+      # --features pyo3: Enable PyO3 Python bindings
+      # --target: Specify target triple
+      # -o dist: Output directory for wheel files
       - name: Build wheel (Linux)
         if: runner.os == 'Linux'
-        run: maturin build --release --features pyo3 --target ${{ matrix.target }} --manylinux auto -o dist
+        run: maturin build --release --features pyo3 --target ${{ matrix.target }} -o dist
 
+      # Build wheel for macOS/Windows (native)
+      # Same as above but without manylinux flag
       - name: Build wheel (macOS/Windows)
         if: runner.os != 'Linux'
         run: maturin build --release --features pyo3 --target ${{ matrix.target }} -o dist
 
+      # Upload wheel as artifact
+      # Artifact name includes target and Python version for easy identification
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -369,110 +638,274 @@ jobs:
   ################################################################################
   # Phase 3: Tests
   ################################################################################
+  #
+  # This phase runs comprehensive tests to verify both the Rust library
+  # and Python bindings work correctly.
+  #
+  # Two test suites:
+  # 1. Rust tests: Native Rust unit tests and integration tests
+  # 2. Python tests: Verifies Python import and basic functionality
 
+  # ------------------------------------------------------------------------------
+  # Rust Tests
+  # ------------------------------------------------------------------------------
+  #
+  # Runs all Rust tests with full features enabled
+  # --no-fail-fast: Runs all tests even if one fails (collect comprehensive results)
+  # --test-threads=4: Parallel test execution for faster completion
   run-rust-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
+
+      # Install system dependencies
       - run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
+
+      # Cache for test builds
       - uses: actions/cache@v4
         with:
           path: ~/.cargo/registry,~/.cargo/git,target
           key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
+
+      # Run all Rust tests
+      # Features: full - enables all library features for comprehensive testing
       - run: cargo test --release --features full --no-fail-fast -- --test-threads=4
 
+  # ------------------------------------------------------------------------------
+  # Python Tests
+  # ------------------------------------------------------------------------------
+  #
+  # Builds a wheel and tests Python import
+  # Uses Python 3.12 as the test version
+  # This verifies the Python bindings work correctly
   run-python-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Set up Python 3.12
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
       - uses: dtolnay/rust-toolchain@stable
+
+      # Install system dependencies
       - run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
+
+      # Install build tools
       - run: |
           python -m pip install --upgrade pip
           pip install maturin
+
+      # Build wheel
       - run: maturin build --release --features pyo3 -o dist
+
+      # Install the wheel
       - run: pip install dist/*.whl
+
+      # Verify Python import works
+      # This is a basic sanity test - comprehensive tests should be
+      # added to the project's test suite
       - run: python -c "import zix; print('Zi imported successfully')"
+
+      # Run Python unit tests
+      # Executes the core functionality test suite to verify Python bindings
       - run: python tests/python/test_core.py
+
+      # Run Python operator tests
+      # Tests operator implementations and overloaded functions
       - run: python tests/python/test_operators.py
+
+  ################################################################################
+  # Phase 3b: Benchmarks (Performance Testing)
+  ################################################################################
+  #
+  # Benchmarks run only on pull requests to track performance changes.
+  # They compare the current PR performance against the baseline.
+  #
+  # --save-baseline: Saves benchmark results as baseline for future comparisons
+  # || true: Continues even if benchmarks fail (prevents blocking PRs)
+  #
+  # Note: Benchmarks are informational only and don't block merges
 
   run-benchmarks:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
+
+      # Install system dependencies
       - run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
+
+      # Cache for benchmark builds
       - uses: actions/cache@v4
         with:
           path: ~/.cargo/registry,~/.cargo/git,target
           key: ${{ runner.os }}-bench-${{ hashFiles('**/Cargo.lock') }}
+
+      # Run benchmarks with full features enabled
+      # Saves results as 'pr-baseline' for comparison with future runs
+      # The || true prevents benchmark failures from blocking PRs
       - run: cargo bench --features full -- --save-baseline pr-baseline || true
 
   ################################################################################
   # Phase 4: Publish
   ################################################################################
+  #
+  # This phase handles publishing built artifacts to various package registries.
+  # It only runs on release events (not on every push).
+  #
+  # Publishing Strategy:
+  # - Production release (name doesn't contain 'Test'): Publish to PyPI and crates.io
+  # - Test release (name contains 'Test'): Publish to TestPyPI for testing
+  #
+  # After publishing, the workflow syncs the release to Gitee (Chinese platform)
+  # for better accessibility in China region.
 
+  # ------------------------------------------------------------------------------
+  # Publish to PyPI (Production)
+  # ------------------------------------------------------------------------------
+  #
+  # Publishes Python wheels to the official PyPI repository.
+  # Only runs for production releases (not test releases).
+  #
+  # Dependencies: build-python job must complete first
+  # Environment: Uses PyPI API token from secrets
+  #
+  # Publishing Flow:
+  # 1. Download all Python wheel artifacts
+  # 2. Set up Python environment
+  # 3. Install twine (PyPI upload tool)
+  # 4. Upload all wheels to PyPI
   publish-pypi:
     needs: build-python
     if: github.event_name == 'release' && !contains(github.event.release.name, 'Test')
     runs-on: ubuntu-latest
     steps:
+      # Download all Python wheel artifacts from build-python job
+      # merge-multiple: true combines all artifacts into single dist/ directory
       - uses: actions/download-artifact@v4
         with:
           path: dist
           pattern: python-*
           merge-multiple: true
+
+      # Set up Python for twine installation
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      # Install twine - the official PyPI upload tool
       - run: pip install twine
+
+      # Upload all wheel files to PyPI
+      # Uses API token authentication (more secure than username/password)
       - run: twine upload dist/*.whl
         env:
+          # __token__ is the username when using API tokens
           TWINE_USERNAME: __token__
+          # API token from GitHub secrets (set in repository settings)
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
 
+  # ------------------------------------------------------------------------------
+  # Publish to TestPyPI (Testing)
+  # ------------------------------------------------------------------------------
+  #
+  # Publishes Python wheels to TestPyPI for testing before production release.
+  # Only runs when release name contains 'Test' (e.g., "v1.0.0 Test").
+  #
+  # TestPyPI is a separate instance for testing package publishing without
+  # affecting the production index. Useful for testing new versions or
+  # verifying build quality before public release.
+  #
+  # Repository URL: https://test.pypi.org/legacy/ (legacy upload API endpoint)
   publish-testpypi:
     needs: build-python
     if: github.event_name == 'release' && contains(github.event.release.name, 'Test')
     runs-on: ubuntu-latest
     steps:
+      # Download all Python wheel artifacts
       - uses: actions/download-artifact@v4
         with:
           path: dist
           pattern: python-*
           merge-multiple: true
+
+      # Set up Python
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      # Install twine
       - run: pip install twine
-      - run: twine upload --repository-url https://test.pypi.org/legacy/ dist/*.whl
+
+      # Upload to TestPyPI using legacy API endpoint
+      # Note: test.pypi.org requires separate account and API token
+      - run: twine upload --repository-url `https://test.pypi.org/legacy/`  dist/*.whl
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TEST_API_TOKEN }}
 
+  # ------------------------------------------------------------------------------
+  # Publish to crates.io (Rust Registry)
+  # ------------------------------------------------------------------------------
+  #
+  # Publishes the Rust crate to crates.io, the official Rust package registry.
+  # Only runs for production releases (not test releases).
+  #
+  # Dependencies: All Rust library build jobs must complete first
+  # Token: CARGO_REGISTRY_TOKEN secret with crates.io publish permissions
   publish-crate:
     needs: [build-rust-linux, build-rust-linux-arm64, build-rust-windows, build-rust-macos, build-rust-macos-arm64]
     if: github.event_name == 'release' && !contains(github.event.release.name, 'Test')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
+
+      # Install system dependencies
       - run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
+
+      # Publish to crates.io using authentication token
+      # cargo publish handles version checking and dependency resolution
       - run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
+  # ------------------------------------------------------------------------------
+  # Sync to Gitee (Chinese Git Platform)
+  # ------------------------------------------------------------------------------
+  #
+  # Synchronizes the release to Gitee, a Chinese Git hosting platform.
+  # This ensures Chinese developers have fast access to Zi releases.
+  #
+  # Runs for all releases (both production and test).
+  #
+  # Dependencies: All build jobs must complete first
+  # API: Uses Gitee REST API to create release
+  #
+  # Sync Process:
+  # 1. Create JSON payload with release information (tag, name, body)
+  # 2. POST to Gitee API with authentication token
+  # 3. Creates a corresponding release on Gitee repository
   sync-to-gitee:
     needs: [build-rust-linux, build-rust-linux-arm64, build-rust-windows, build-rust-macos, build-rust-macos-arm64, build-python]
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     steps:
+      # Sync release to Gitee using their API
+      # Extracts release info from GitHub event and creates matching release on Gitee
       - name: Sync Release to Gitee
         run: |
-          GITEE_API="https://gitee.com/api/v5/repos/dunimd/zi/releases"
+          # Gitee API endpoint for creating releases
+          GITEE_API=" `https://gitee.com/api/v5/repos/dunimd/zi/releases` "
+
+          # Create JSON payload using jq
+          # Includes: access token, tag name, release name, body, prerelease flag
           jq -n \
             --arg token "${{ secrets.GITEE_TOKEN }}" \
             --arg tag "${{ github.event.release.tag_name }}" \
@@ -486,4 +919,6 @@ jobs:
               prerelease: false,
               target_commitish: "master"
             }' > payload.json
+
+          # POST the release data to Gitee API
           curl -X POST "$GITEE_API" -H "Content-Type: application/json" -d @payload.json

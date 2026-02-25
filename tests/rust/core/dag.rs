@@ -15,8 +15,42 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # ZiDAG Core Tests
+//!
+//! This module provides comprehensive tests for the ZiDAG (Directed Acyclic Graph)
+//! implementation, which is fundamental to Zi pipeline execution.
+//!
+//! ## Test Coverage
+//!
+//! - **Topological Sort**: Verifies that nodes are sorted according to dependencies
+//! - **Cycle Detection**: Ensures circular dependencies are properly detected and rejected
+//! - **Node Operations**: Tests adding, removing, and connecting nodes
+//! - **Graph Traversal**: Tests various graph traversal methods
+//!
+//! ## Architecture
+//!
+//! The DAG system represents pipeline dependencies as a directed graph where:
+//! - **Nodes** represent individual operators or pipeline stages
+//! - **Edges** represent data flow dependencies between stages
+//! - **Topological order** ensures dependencies are processed before dependents
+//!
+//! ## Test Execution
+//!
+//! These tests can be run with cargo:
+//! ```bash
+//! cargo test --test dag
+//! ```
+
 use zix::{ZiDAG, ZiGraphNode, ZiNodeId, ZiGraphNodeConfig};
 
+/// Tests topological sort functionality of the DAG.
+///
+/// This test creates a simple DAG with three nodes (a, b, c) where:
+/// - a -> c (a is a dependency of c)
+/// - b -> c (b is a dependency of c)
+///
+/// The topological sort should return nodes in an order where
+/// dependencies come before their dependents.
 #[test]
 fn test_dag_topological_sort() {
     let mut dag = ZiDAG::new();
@@ -68,6 +102,14 @@ fn test_dag_topological_sort() {
         < sorted.iter().position(|id| id == &ZiNodeId::from("c")).unwrap());
 }
 
+/// Tests cycle detection in the DAG.
+///
+/// This test creates a DAG with a circular dependency:
+/// - a -> b (a depends on b)
+/// - b -> c (b depends on c)
+/// - c -> a (c depends on a - creates a cycle)
+///
+/// The topological sort should return an error indicating the cycle exists.
 #[test]
 fn test_dag_cycle_detection() {
     let mut dag = ZiDAG::new();

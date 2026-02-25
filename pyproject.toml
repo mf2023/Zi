@@ -15,10 +15,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Zi Python Project Configuration
+#
+# This file defines the Python project metadata, build system, and tooling
+# configuration for the Zi framework's Python package (zix).
+#
+# Build System:
+# - maturin: Rust-based Python extension build tool
+# - Requires maturin >= 1.0, < 2.0
+#
+# Project Metadata:
+# - name: Package name on PyPI
+# - version: Semantic versioning (aligned with Rust crate)
+# - description: Brief description of functionality
+# - readme: README file for PyPI
+# - requires-python: Minimum Python version
+# - license: SPDX license identifier
+# - authors: Project maintainers
+# - keywords: Searchable tags for PyPI
+
+# Build System Configuration
+# Maturin is a build tool for Rust-based Python extensions.
+# It handles compilation, wheel generation, and PyPI publishing.
 [build-system]
 requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
+# Project Metadata
+# Defines package information for PyPI and installation tools
 [project]
 name = "zix"
 version = "0.1.0"
@@ -41,6 +65,8 @@ keywords = [
     "pyo3"
 ]
 
+# PyPI Classifiers
+# Provides metadata for PyPI package discovery and filtering
 classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
@@ -54,6 +80,10 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
+# Maturin Configuration
+# Configures the Rust extension build process
+# - module-name: Python module name (matches Cargo lib name)
+# - features: Enabled Cargo features for the build
 [tool.maturin]
 module-name = "zix"
 features = ["pyo3"]

@@ -15,6 +15,55 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # Zi Error Module
+//!
+//! This module defines the error types and utilities used throughout the Zi
+//! framework for consistent error handling and reporting.
+//!
+//! ## Error Handling Philosophy
+//!
+//! Zi uses a structured error approach with the following principles:
+//!
+//! - **Explicit Error Types**: Each error variant represents a specific category
+//!   of failure, making it easier to handle errors appropriately
+//! - **Context-Rich**: Errors include relevant context (operator names, stage
+//!   names, detailed messages) to aid debugging
+//! - **Recoverable**: Most errors are recoverable, allowing pipelines to handle
+//!   failures gracefully
+//! - **Serde Support**: Errors can be serialized/deserialized for logging,
+//!   persistence, and network transmission
+//!
+//! ## Error Categories
+//!
+//! - **Io**: Filesystem and network errors
+//! - **Schema**: Data structure and type mismatches
+//! - **Validation**: Input validation failures
+//! - **Operator**: Failures in operator implementations
+//! - **Pipeline**: Pipeline orchestration failures
+//! - **Serde**: Serialization/deserialization errors
+//! - **Zip**: ZIP archive operation errors
+//! - **Internal**: Unexpected internal failures
+//!
+//! ## Usage
+//!
+//! ```rust
+//! use zi::errors::{Result, ZiError};
+//!
+//! fn example() -> Result<String> {
+//!     // Validation error
+//!     if some_condition {
+//!         return Err(ZiError::validation("invalid input"));
+//!     }
+//!
+//!     // Operator error with context
+//!     let result = some_operation().map_err(|e| {
+//!         ZiError::operator("my.operator", e.to_string())
+//!     })?;
+//!
+//!     Ok(result)
+//! }
+//! ```
+
 use std::io;
 
 use serde::{Deserialize, Serialize};
@@ -22,6 +71,22 @@ use thiserror::Error;
 use zip::result::ZipError;
 
 /// Convience result type used throughout Zi Core.
+///
+/// This is a type alias for `std::result::Result<T, ZiError>` that provides
+/// a more concise way to write function signatures that return Zi errors.
+///
+/// # Example
+///
+/// ```rust
+/// use zi::errors::Result;
+///
+/// fn process_data(input: &str) -> Result<String> {
+///     if input.is_empty() {
+///         return Err(ZiError::validation("input cannot be empty"));
+///     }
+///     Ok(input.to_uppercase())
+/// }
+/// ```
 pub type Result<T> = std::result::Result<T, ZiError>;
 
 /// Canonical error enumeration for Zi Core.

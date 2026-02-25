@@ -15,6 +15,35 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # Zi DAG Module
+//!
+//! This module provides Directed Acyclic Graph (DAG) representation for managing
+//! operator dependencies and execution ordering in Zi pipelines.
+//!
+//! ## DAG Architecture
+//!
+//! The DAG module enables:
+//! - **Dependency Tracking**: Operators can declare dependencies on other operators
+//! - **Topological Sorting**: Automatic determination of optimal execution order
+//! - **Parallel Execution**: Independent operators can run concurrently
+//! - **Cycle Detection**: Prevents invalid pipeline configurations
+//! - **Checkpointing**: State preservation for recovery
+//!
+//! ## Usage
+//!
+//! ```rust
+//! use zi::dag::{ZiDAG, ZiNodeId};
+//!
+//! // Build a DAG
+//! let mut dag = ZiDAG::new();
+//! dag.add_node("read", operator_a)?;
+//! dag.add_node("transform", operator_b)?;
+//! dag.add_dependency("read", "transform")?;
+//!
+//! // Execute in topological order
+//! let order = dag.topological_sort()?;
+//! ```
+
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;

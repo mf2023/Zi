@@ -15,10 +15,26 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # Zi Operator Tests - Augment
+//!
+//! This module contains tests for augmentation operators in the Zi framework.
+//! Augmentation operators are used for data augmentation in ML training pipelines,
+//! including noise injection, synonym replacement, back-translation, and more.
+//!
+//! ## Running Tests
+//!
+//! ```bash
+//! cargo test --test augment
+//! ```
+
 use zix::operators::augment::augment_noise_factory;
 use zix::ZiRecord;
 use serde_json::json;
 
+/// Tests the noise augmentation operator.
+///
+/// Verifies that a noise augmentation operator can be created and correctly
+/// applies noise to the input data with the specified intensity.
 #[test]
 fn augment_noise_basic() {
     let config = json!({"path": "payload.text", "intensity": 0.1, "seed": 42});

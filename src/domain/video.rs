@@ -76,15 +76,28 @@ use std::hash::{Hash, Hasher};
 /// - `pixel_format`: Pixel color sampling format
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VideoEncoding {
+    /// Video container format (MP4, MKV, AVI, WebM, MOV, etc.)
     pub format: VideoFormat,
+    /// Video frame width in pixels (horizontal resolution)
     pub width: u32,
+    /// Video frame height in pixels (vertical resolution)
     pub height: u32,
+    /// Frames per second (fps) for video playback
+    /// Common values: 24 (film), 25 (PAL), 30 (NTSC), 60 (smooth)
     pub frame_rate: f32,
+    /// Total duration of the video in milliseconds
     pub duration_ms: u64,
+    /// Video compression codec (H264, H265, VP9, AV1, etc.)
     pub codec: VideoCodec,
+    /// Optional bit rate in bits per second for compressed video
+    /// Higher bitrate generally means better quality but larger file size
     pub bit_rate: Option<u32>,
+    /// Whether the video contains an audio track
     pub has_audio: bool,
+    /// Audio codec used for the audio track (if has_audio is true)
     pub audio_codec: Option<super::audio::AudioCodec>,
+    /// Pixel color sampling format determining how color is stored
+    /// Common: YUV420P (most common), RGB24, RGBA
     pub pixel_format: PixelFormat,
 }
 
@@ -310,9 +323,14 @@ impl Hash for VideoEncoding {
 /// - `keyframes`: List of keyframe timestamps in milliseconds
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoPayload {
+    /// Raw video data bytes encoded according to the format and codec specified in encoding
     pub data: Vec<u8>,
+    /// Video encoding metadata including format, dimensions, codec, etc.
     pub encoding: VideoEncoding,
+    /// Optional URI pointing to external video resource (for streaming or referenced videos)
     pub uri: Option<String>,
+    /// List of keyframe timestamps in milliseconds for random access seeking
+    /// Keyframes are I-frames that can be decoded independently without previous frames
     pub keyframes: Vec<u64>,
 }
 

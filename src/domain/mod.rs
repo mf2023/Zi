@@ -46,13 +46,33 @@
 //!
 //! let payload = TextPayload::new("Hello, World!".to_string());
 //! let sample = ZiSample::new("sample-001", payload, None);
-//! assert_eq!(sample.zi_domain_type(), "text");
+//! assert_eq!(sample.zi_domain().domain_type(), "text");
 //! ```
 //!
 //! ## Feature Flags
 //!
 //! - `parquet`: Enables Arrow/Parquet serialization support for ZiSample types
 //! - `pyo3`: Enables Python bindings for TextEncoding and TextPayload
+//!
+//! ## Module Organization
+//!
+//! This module is organized into several submodules:
+//! - `text`: Text encoding and payload types
+//! - `image`: Image encoding and payload types
+//! - `audio`: Audio encoding and payload types
+//! - `video`: Video encoding and payload types
+//!
+//! ## Data Flow
+//!
+//! 1. Create domain-specific payload (TextPayload, ImagePayload, etc.)
+//! 2. Wrap payload in ZiSample with unique ID and optional metadata
+//! 3. Process samples through operators or pipelines
+//! 4. Serialize/deserialize using ZiEncoder trait implementations
+//!
+//! ## Thread Safety
+//!
+//! All payload types implement Send + Sync, enabling safe concurrent processing
+//! across multiple threads in data pipelines.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -142,7 +162,12 @@ impl ZiDomain {
 /// - `Semantic`: Content-based similarity scoring
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MultiModalEncoding {
+    /// Vector of ZiDomain items representing each modality component
+    /// Each component can be Text, Image, Audio, or Video
+    /// Order matters for aligned content (e.g., [Video, Audio] for video with sound)
     pub components: Vec<ZiDomain>,
+    /// Alignment specification describing the relationship between components
+    /// Defines how different modalities are synchronized or related
     pub alignment: MultiModalAlignment,
 }
 

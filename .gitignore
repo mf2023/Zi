@@ -15,34 +15,68 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Rust build artifacts
+# Zi Git Ignore Configuration
+#
+# This file defines patterns for files that should not be tracked by Git.
+# Patterns are organized by category:
+# - Rust build artifacts
+# - IDE and editor files
+# - Python build artifacts
+# - Virtual environment files
+# - Testing and coverage reports
+# - Documentation build outputs
+# - Temporary and cache files
+# - OS-specific files
+# - Database files
+
+# =============================================================================
+# Rust Build Artifacts
+# =============================================================================
+
+# Cargo build output directory
 /target/
+# Cargo lock file (optional - include if you want reproducible builds)
 Cargo.lock
+# Rust compiler backup files
 **/*.rs.bk
+# Debug symbols
 *.pdb
 
+# Rust Analyzer project file
 rust-project.json
 
+# =============================================================================
+# IDE and Editor Files
+# =============================================================================
+
+# JetBrains IDE (IntelliJ, CLion, etc.)
 .idea/
+# Visual Studio Code
 .vscode/
+# Trae IDE
 .trae/
+# Vim swap files
 *.swp
 *.swo
 *~
+# macOS Finder
 .DS_Store
+# Windows thumbnail cache
 Thumbs.db
 
-*.bak
-*.backup
-*.orig
+# =============================================================================
+# Python Build Artifacts
+# =============================================================================
 
-*.log
-
+# Python bytecode cache
 __pycache__/
 *.py[cod]
 *$py.class
+# Compiled extensions
 *.so
+# Python header files
 .Python
+# Setuptools/build artifacts
 build/
 develop-eggs/
 dist/
@@ -60,7 +94,13 @@ wheels/
 *.egg
 MANIFEST
 
+# =============================================================================
+# Virtual Environment Files
+# =============================================================================
+
+# Environment variables file
 .env
+# Python virtual environments
 .venv
 env/
 venv/
@@ -68,30 +108,69 @@ ENV/
 env.bak/
 venv.bak/
 
+# =============================================================================
+# Testing and Coverage Reports
+# =============================================================================
+
+# Tarpaulin code coverage report
 tarpaulin-report.html
+# Cobertura coverage XML
 cobertura.xml
+# LCOV coverage info
 lcov.info
+# Profiling data
 *.profraw
 
+# =============================================================================
+# Documentation Build Outputs
+# =============================================================================
+
+# MkDocs build output
 docs/_build/
+# Sphinx build output
 docs/target/
 
+# =============================================================================
+# Temporary and Cache Files
+# =============================================================================
+
+# Temporary files
 *.tmp
 *.temp
+# Cache directories
 .cache/
 
+# =============================================================================
+# OS-Specific Files
+# =============================================================================
+
+# macOS
 .DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
+# Windows
 ehthumbs.db
 Thumbs.db
 
+# =============================================================================
+# Log Files
+# =============================================================================
+
 *.log
+
+# =============================================================================
+# Process Files
+# =============================================================================
+
 *.pid
 *.seed
 *.pid.lock
+
+# =============================================================================
+# Database Files
+# =============================================================================
 
 *.db
 *.sqlite

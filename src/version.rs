@@ -15,6 +15,29 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # Zi Version Module
+//!
+//! This module provides version tracking and reproducibility features for Zi pipelines.
+//! It enables deterministic data processing by computing and storing hashes of data,
+//! code, and environment.
+//!
+//! ## Version Tracking
+//!
+//! Zi uses a triple-hash approach to ensure reproducibility:
+//! - **Data Hash**: Hash of the input data
+//! - **Code Hash**: Hash of the code/pipeline definition
+//! - **Env Hash**: Hash of the environment configuration
+//!
+//! ## Usage
+//!
+//! ```rust
+//! use zi::version::{ZiTripleHash, ZiVersionStore};
+//!
+//! // Create a version for reproducibility
+//! let version = ZiTripleHash::from_data(&records)?;
+//! println!("Version: {}", version.to_string());
+//! ```
+
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::fs::{self, File};

@@ -70,12 +70,20 @@ use std::hash::{Hash, Hasher};
 /// - `exif`: Optional EXIF metadata from digital cameras
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ImageEncoding {
+    /// Image file format (JPEG, PNG, GIF, WebP, TIFF, AVIF, etc.)
     pub format: ImageFormat,
+    /// Image width in pixels (horizontal resolution)
     pub width: u32,
+    /// Image height in pixels (vertical resolution)
     pub height: u32,
+    /// Color space model used for pixel representation (RGB, RGBA, Grayscale, etc.)
     pub color_space: ColorSpace,
+    /// Bits per pixel component (typically 8, but can be 10, 12, 16 for HDR)
     pub bit_depth: u8,
+    /// Whether the image has an alpha channel for transparency
     pub has_alpha: bool,
+    /// Optional EXIF metadata extracted from digital camera images
+    /// Contains camera info, GPS coordinates, exposure settings, etc.
     pub exif: Option<ImageExif>,
 }
 
@@ -148,13 +156,22 @@ pub enum ColorSpace {
 /// - `gps`: Geographic coordinates (latitude, longitude)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ImageExif {
+    /// Camera manufacturer (e.g., "Canon", "Nikon", "Sony")
     pub camera_make: Option<String>,
+    /// Camera model identifier (e.g., "EOS R5", "A7 IV")
     pub camera_model: Option<String>,
+    /// Lens focal length in millimeters
     pub focal_length: Option<f32>,
+    /// Aperture F-number (e.g., 2.8 for f/2.8)
     pub aperture: Option<f32>,
+    /// ISO sensitivity setting (e.g., 100, 400, 3200)
     pub iso: Option<u32>,
+    /// Shutter speed as string (e.g., "1/250", "2s", "30\"")
     pub shutter_speed: Option<String>,
+    /// Date and time when photo was taken (ISO 8601 format)
     pub datetime: Option<String>,
+    /// GPS coordinates as (latitude, longitude) tuple
+    /// Latitude range: -90.0 to 90.0, Longitude range: -180.0 to 180.0
     pub gps: Option<(f64, f64)>,
 }
 
@@ -281,8 +298,12 @@ impl Hash for ImageEncoding {
 /// - `uri`: Optional URI pointing to external image resource
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImagePayload {
+    /// Raw image data bytes encoded according to the format in encoding
+    /// For JPEG this would be JPEG-compressed bytes, for PNG would be PNG-compressed, etc.
     pub data: Vec<u8>,
+    /// Image encoding metadata including format, dimensions, color space, bit depth, etc.
     pub encoding: ImageEncoding,
+    /// Optional URI pointing to external image resource (for streaming or referenced images)
     pub uri: Option<String>,
 }
 

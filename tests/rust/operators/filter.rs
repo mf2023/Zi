@@ -15,9 +15,28 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # Zi Operator Tests - Filter
+//!
+//! This module contains tests for filter operators in the Zi framework.
+//! Filter operators are used to select or reject records based on field values.
+//!
+//! ## Test Categories
+//!
+//! - **Record Creation Tests**: Verify ZiRecord instantiation
+//! - **DAG Tests**: Verify pipeline dependency management
+//!
+//! ## Running Tests
+//!
+//! ```bash
+//! cargo test --test filter
+//! ```
+
 use zix::{ZiRecord, ZiDAG, ZiGraphNode, ZiNodeId, ZiGraphNodeConfig};
 use serde_json::json;
 
+/// Tests basic ZiRecord creation with ID and payload.
+///
+/// Verifies that records can be created with an identifier and JSON payload.
 #[test]
 fn test_record_creation() {
     let record = ZiRecord::new(Some("1".into()), json!({"text": "hello"}));
@@ -25,6 +44,9 @@ fn test_record_creation() {
     assert_eq!(record.payload["text"], "hello");
 }
 
+/// Tests attaching metadata to a ZiRecord.
+///
+/// Verifies that metadata can be added to records using the metadata_mut builder.
 #[test]
 fn test_record_with_metadata() {
     let mut record = ZiRecord::new(Some("1".into()), json!({"text": "hello"}));
@@ -33,6 +55,9 @@ fn test_record_with_metadata() {
     assert_eq!(record.metadata.as_ref().unwrap()["score"], 0.9);
 }
 
+/// Tests creating multiple records as a batch.
+///
+/// Verifies that batches of records can be created and processed together.
 #[test]
 fn test_record_batch_creation() {
     let records = vec![
@@ -42,6 +67,9 @@ fn test_record_batch_creation() {
     assert_eq!(records.len(), 2);
 }
 
+/// Tests DAG topological sort ordering.
+///
+/// Verifies that the DAG can determine correct execution order based on dependencies.
 #[test]
 fn test_dag_topological_sort() {
     let mut dag = ZiDAG::new();

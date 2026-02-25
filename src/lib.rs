@@ -15,6 +15,73 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # Zi Core Library
+//!
+//! This is the main library entry point for the Zi data quality framework.
+//! It provides a comprehensive set of APIs for data processing, quality assessment,
+//! transformation, and enrichment of multi-modal data (text, images, audio, video).
+//!
+//! ## Module Overview
+//!
+//! The library is organized into the following major modules:
+//!
+//! - **domain**: Core domain encoding types for multi-modal data (text, image, audio, video)
+//! - **record**: ZiRecord and related data structures for data representation
+//! - **operator**: Core operator traits and execution logic
+//! - **operators**: Collection of built-in operators for data processing
+//! - **pipeline**: Pipeline building and execution infrastructure
+//! - **dag**: Directed Acyclic Graph representation for operator dependencies
+//! - **context**: Execution context for managing pipeline state
+//! - **ingest**: Data ingestion and format detection
+//! - **inspect**: Data profiling, statistics, and diff analysis
+//! - **export**: Data export and serialization
+//! - **enrich**: Data augmentation and synthesis
+//! - **dsl**: Domain-specific language parser and compiler
+//! - **orbit**: Plugin system for extensibility
+//! - **distributed**: Distributed computing support
+//! - **metrics**: Quality metrics and statistics
+//!
+//! ## Feature Flags
+//!
+//! - `domain`: Enables multi-modal domain types (text, image, audio, video)
+//! - `pyo3`: Enables Python bindings (PyO3 integration)
+//! - `distributed`: Enables distributed computing features
+//! - `full`: Enables all features
+//!
+//! ## Quick Start
+//!
+//! ```rust
+//! use zi::{ZiRecord, ZiOperator, ZiPipelineBuilder};
+//!
+//! // Create records
+//! let records = vec![
+//!     ZiRecord::new("1", r#"{"text": "hello"}"#, None),
+//!     ZiRecord::new("2", r#"{"text": "world"}"#, None),
+//! ];
+//!
+//! // Build a pipeline
+//! let pipeline = (ZiPipelineBuilder::new()
+//!     .filter("filter.equals", r#"{"path": "text", "value": "hello"}"#)
+//!     .build());
+//!
+//! // Execute
+//! let results = pipeline.process(records).unwrap();
+//! ```
+//!
+//! ## Architecture
+//!
+//! Zi follows a pipeline-based architecture:
+//! 1. **Records**: Data is represented as ZiRecord with flexible payload
+//! 2. **Operators**: Individual processing steps (filter, transform, validate)
+//! 3. **Pipeline**: Composes operators into executable workflows
+//! 4. **DAG**: Manages operator dependencies and execution order
+//! 5. **Context**: Provides execution state and configuration
+//!
+//! ## Error Handling
+//!
+//! All operations return `Result<T, ZiError>` for explicit error handling.
+//! Common error types include parsing errors, validation failures, and I/O errors.
+
 #![allow(non_snake_case)]
 
 pub mod errors;

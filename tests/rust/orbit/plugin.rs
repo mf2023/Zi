@@ -15,10 +15,31 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # Zi Orbit Plugin Tests
+//!
+//! This module contains tests for the Orbit plugin system in Zi framework.
+//! The Orbit system provides extensibility through dynamic plugin loading.
+//!
+//! ## Plugin System Architecture
+//!
+//! - **ZiPluginManifest**: Plugin metadata and configuration
+//! - **ZiPluginDependency**: Plugin dependency declarations
+//! - **ZiPluginRegistry**: Plugin registration and discovery
+//!
+//! ## Running Tests
+//!
+//! ```bash
+//! cargo test --test plugin
+//! ```
+
 use zix::orbit::plugin::{
     ZiPluginManifest, ZiPluginDependency, ZiPluginRegistry
 };
 
+/// Tests plugin manifest serialization and deserialization.
+///
+/// Verifies that a plugin manifest can be serialized to JSON and
+/// correctly deserialized back to a ZiPluginManifest struct.
 #[test]
 fn test_plugin_manifest_serialization() {
     let manifest = ZiPluginManifest {

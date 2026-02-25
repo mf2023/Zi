@@ -15,6 +15,30 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # Zi Context Module
+//!
+//! This module provides the execution context for Zi pipelines, integrating
+//! logging, caching, metrics, tracing, and file system operations.
+//!
+//! ## Components
+//!
+//! - **Logger**: Structured logging with configurable levels and outputs
+//! - **Cache**: LRU cache with TTL for intermediate results
+//! - **Metrics**: Performance and quality metrics collection
+//! - **Tracer**: Distributed tracing for debugging
+//! - **FileSystem**: Virtual file system abstraction
+//!
+//! ## Usage
+//!
+//! ```rust
+//! use zi::context::ZiContext;
+//!
+//! async fn example() {
+//!     let context = ZiContext::new().await.unwrap();
+//!     context.logger().info("Pipeline started");
+//! }
+//! ```
+
 use std::sync::Arc;
 use tokio::sync::RwLock;
 

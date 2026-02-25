@@ -24,8 +24,37 @@ Copyright © 2025-2026 Wenze Wei. All Rights Reserved.
 This file is part of Zi.
 The Zi project belongs to the Dunimd project team.
 
-Comprehensive test suite for all 90 operators in Zi framework.
+Comprehensive test suite for all operators in Zi framework.
 Tests are organized by operator category.
+
+Operator Categories:
+1. Filter: Record filtering based on field values (equals, contains, regex, etc.)
+2. Transform: Data transformation and enrichment
+3. Field: Field-level operations (select, rename, convert)
+4. Quality: Data quality assessment and filtering
+5. Sample: Sampling and subsetting strategies
+6. Split: Record splitting and partitioning
+7. LLM: Large Language Model integration
+8. Language: Language detection and processing
+9. Metadata: Metadata manipulation
+10. Dedup: Deduplication operations
+11. PII: Personally Identifiable Information handling
+12. Merge: Record merging and joining
+13. Shuffle: Randomization operations
+14. Token: Tokenization operations
+
+Each test class contains multiple test methods covering different operator
+configurations and edge cases. Tests use a consistent pattern:
+1. Create sample records
+2. Initialize operator with JSON configuration
+3. Apply operator to records
+4. Assert expected results
+
+Example:
+    $ python tests/python/test_operators.py
+    ✓ filter.equals
+    ✓ filter.not_equals
+    ...
 """
 
 import sys
@@ -34,16 +63,50 @@ sys.path.insert(0, 'python')
 
 from zix import ZiRecord, ZiOperator
 
+
 def create_record(id: str, payload: dict) -> ZiRecord:
+    """
+    Helper function to create a ZiRecord from a dictionary payload.
+    
+    Args:
+        id: Unique identifier for the record
+        payload: Dictionary containing the record data
+        
+    Returns:
+        ZiRecord instance with JSON-serialized payload
+    """
     return ZiRecord(id=id, payload=json.dumps(payload))
 
+
 def get_payload(record: ZiRecord) -> dict:
+    """
+    Helper function to extract and parse the payload from a ZiRecord.
+    
+    Args:
+        record: ZiRecord instance
+        
+    Returns:
+        Dictionary parsed from the JSON payload
+    """
     return json.loads(record.payload)
 
+
 class TestFilterOperators:
-    """Test all filter operators (22 operators)"""
+    """
+    Test suite for filter operators.
+    
+    Filter operators select records based on field values and conditions.
+    Tests cover equality, inequality, substring matching, regex patterns,
+    numeric comparisons, and null checks.
+    """
     
     def test_filter_equals(self):
+        """
+        Test filter.equals operator - exact value matching.
+        
+        Verifies that records with field values exactly matching
+        the specified value are retained.
+        """
         records = [
             create_record("1", {"text": "hello"}),
             create_record("2", {"text": "world"}),
@@ -55,6 +118,11 @@ class TestFilterOperators:
         print("✓ filter.equals")
     
     def test_filter_not_equals(self):
+        """
+        Test filter.not_equals operator - value exclusion.
+        
+        Verifies that records NOT matching the specified value are retained.
+        """
         records = [
             create_record("1", {"text": "hello"}),
             create_record("2", {"text": "world"}),
@@ -66,6 +134,11 @@ class TestFilterOperators:
         print("✓ filter.not_equals")
     
     def test_filter_contains(self):
+        """
+        Test filter.contains operator - substring matching.
+        
+        Verifies that records containing the specified substring are retained.
+        """
         records = [
             create_record("1", {"text": "hello world"}),
             create_record("2", {"text": "goodbye"}),
@@ -76,6 +149,11 @@ class TestFilterOperators:
         print("✓ filter.contains")
     
     def test_filter_starts_with(self):
+        """
+        Test filter.starts_with operator - prefix matching.
+        
+        Verifies that records with fields starting with the specified prefix are retained.
+        """
         records = [
             create_record("1", {"text": "hello world"}),
             create_record("2", {"text": "world hello"}),

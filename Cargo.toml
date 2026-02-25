@@ -15,6 +15,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Zi Cargo Configuration
+#
+# This file defines the Rust package configuration, dependencies, features,
+# and test definitions for the Zi framework.
+
 [package]
 name = "Zix"
 version = "0.1.0"
@@ -22,15 +27,33 @@ edition = "2021"
 description = "Unified Data Quality Assessment, Cleaning, Transformation, Sampling, and Augmentation Framework"
 license = "Apache-2.0"
 
+# Library Configuration
+# - name: Library crate name for Cargo
+# - path: Entry point source file
+# - doctest: Disable doctests (not applicable for this project)
+# - crate-type: Build as both dynamic library (cdylib) for Python and rlib for Rust
 [lib]
 name = "zix"
 path = "src/lib.rs"
 doctest = false
 crate-type = ["cdylib", "rlib"]
 
+# Feature Flags
+# Features enable optional functionality without affecting the core API.
+# The "full" feature enables all optional features for maximum functionality.
+# Each feature can be enabled individually or combined.
 [features]
 default = ["full"]
 full = ["parquet", "csv", "parallel", "domain", "distributed", "plugin", "compression"]
+# - parquet: Apache Parquet file format support
+# - csv: CSV file format support
+# - parallel: Parallel processing with Rayon
+# - domain: Multi-domain support (text, image, audio, video)
+# - distributed: Distributed computing support
+# - plugin: WASM plugin system
+# - compression: Compression support (gzip, zstd)
+# - pyo3: Python bindings
+# - embedding: FastEmbed-based embeddings
 parquet = ["dep:parquet", "dep:arrow", "arrow2/io_parquet"]
 csv = ["dep:csv", "arrow2/io_csv"]
 parallel = ["rayon"]
@@ -42,24 +65,51 @@ compression = ["dep:flate2", "dep:zstd"]
 edge = []
 embedding = ["dep:fastembed"]
 
+# Project Dependencies
+# Dependencies are organized by functional category:
+# - DMSC Infrastructure: Core framework dependencies
+# - Serialization: JSON, YAML parsing
+# - Async Runtime: Tokio async runtime and futures
+# - Data Processing: Arrow, Parquet, CSV, Rayon for parallel processing
+# - Compression: GZIP, Zstandard compression
+# - Hashing: Blake3, xxHash for fast hashing
+# - Text Processing: Regex for pattern matching
+# - Plugin System: WASMtime runtime, dynamic library loading
+# - Error Handling: Thiserror, Anyhow for error management
+# - Utilities: Logging, random number generation, date/time, encoding
+# - Python Bindings: PyO3 for native Python extension
+# - Tokenization: Tiktoken for OpenAI-compatible tokenization
+# - HTTP Client: Reqwest for LLM API integration
+# - Embeddings: FastEmbed for vector embeddings (optional)
 [dependencies]
 # DMSC Infrastructure
+# Core infrastructure providing caching and observability primitives
 dmsc = { version = "0.1.8-beta.2", features = [
     "cache",
     "observability",
 ] }
 
 # Serialization
+# Serde provides compile-time reflection for serialization/deserialization
+# Supports JSON (serde_json), YAML (serde_yaml), and other formats
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
 
 # Async Runtime
+# Tokio provides asynchronous I/O, timers, and task scheduling
+# async-trait enables async methods in traits
+# futures provides async/await utilities and combinators
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 futures = "0.3"
 
 # Data Processing
+# Arrow2: Column-oriented memory format for analytical workloads
+# Arrow: Apache Arrow Rust bindings (optional, for parquet feature)
+# Parquet: Columnar file format (optional)
+# Rayon: Data-level parallelism for iterator operations
+# CSV: CSV parsing and writing
 arrow2 = { version = "0.17", default-features = false, features = ["serde_json"] }
 arrow = { version = "57", optional = true }
 parquet = { version = "57", optional = true }
@@ -67,26 +117,44 @@ rayon = { version = "1.10", optional = true }
 csv = { version = "1.3", optional = true }
 
 # Compression
+# flate2: GZIP compression (RFC 1952)
+# zstd: Zstandard compression (Facebook's algorithm, better compression ratios)
 flate2 = { version = "1.0", optional = true }
 zstd = { version = "0.13", optional = true }
 
 # Hashing
+# blake3: Fast cryptographic hash function (BLAKE3)
+# xxhash-rust: Extremely fast non-cryptographic hash (xxHash algorithm)
 blake3 = "1.0"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 # Text Processing
+# Regular expression engine for pattern matching and text processing
 regex = "1.10"
 
 # Plugin System
+# wasmtime: Lightweight WebAssembly runtime for plugins
+# libloading: Dynamic library loading for plugin discovery
+# zip: ZIP archive handling for plugin distribution
 wasmtime = { version = "15", optional = true }
 libloading = "0.8"
 zip = "0.6"
 
 # Error Handling
+# thiserror: Ergonomic error type derivation
+# anyhow: Flexible error handling for applications
 thiserror = "1.0"
 anyhow = "1.0"
 
 # Utilities
+# log: Logging facade
+# num_cpus: CPU core count detection
+# rand: Random number generation with seedable RNGs
+# ring: Cryptographic operations (pinned version for compatibility)
+# base64: Base64 encoding/decoding
+# chrono: Date and time handling
+# hex: Hexadecimal encoding
+# libc: Foreign function interface
 log = "0.4"
 num_cpus = "1.16"
 rand = { version = "0.8", features = ["small_rng"] }
@@ -97,42 +165,76 @@ hex = "0.4"
 libc = "0.2"
 
 # Python Bindings
+# PyO3: Rust bindings for Python, enables native Python extensions
 pyo3 = { version = "0.27", optional = true, features = ["extension-module"] }
 
 # Tokenization
+# tiktoken-rs: Rust implementation of OpenAI's tiktoken tokenizer
+# Supports cl100k_base, p50k_base, r50k_base encodings
 tiktoken-rs = "0.6"
 
 # HTTP Client for LLM integration
+# reqwest: HTTP client with async support for API calls to LLM providers
 reqwest = { version = "0.12", features = ["json", "blocking"] }
 
 # Embeddings (optional)
+# fastembed: Fast and lightweight embedding generation
 fastembed = { version = "4", optional = true }
 
+# Development Dependencies
+# These crates are only needed for testing and benchmarking
+# - tempfile: Temporary directory/file handling for test fixtures
+# - criterion: Statistical benchmarking framework
+# - proptest: Property-based testing for automated test generation
 [dev-dependencies]
 tempfile = "3.10"
 criterion = { version = "0.5", features = ["html_reports"] }
 proptest = "1.4"
 
+# Integration Test Definitions
+# Each [[test]] entry defines an integration test compiled from external files.
+# Tests can be run with: cargo test --test <name>
+#
+# Test Categories:
+# - dag: Directed Acyclic Graph (DAG) for pipeline dependency management
+# - filter: Filter operators for record selection
+# - augment: Data augmentation operators
+# - sample: Sampling operators for subset selection
+# - transform: Data transformation operators
+# - plugin: Orbit plugin system tests
+
+# DAG Tests
+# Tests topological sorting and cycle detection in pipeline execution graphs
 [[test]]
 name = "dag"
 path = "tests/rust/core/dag.rs"
 
+# Filter Operator Tests
+# Tests record filtering based on field values and conditions
 [[test]]
 name = "filter"
 path = "tests/rust/operators/filter.rs"
 
+# Augment Operator Tests
+# Tests data augmentation for ML training pipelines
 [[test]]
 name = "augment"
 path = "tests/rust/operators/augment.rs"
 
+# Sample Operator Tests
+# Tests random and stratified sampling strategies
 [[test]]
 name = "sample"
 path = "tests/rust/operators/sample.rs"
 
+# Transform Operator Tests
+# Tests data transformation and normalization
 [[test]]
 name = "transform"
 path = "tests/rust/operators/transform.rs"
 
+# Plugin System Tests
+# Tests Orbit plugin manifest and registry functionality
 [[test]]
 name = "plugin"
 path = "tests/rust/orbit/plugin.rs"

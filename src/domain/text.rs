@@ -65,10 +65,20 @@ use serde::{Deserialize, Serialize};
 /// - `normalization`: Unicode normalization form applied to the text
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TextEncoding {
+    /// Character encoding name (e.g., "UTF-8", "ASCII", "ISO-8859-1", "GBK")
+    /// Determines how bytes are interpreted as characters
     pub charset: String,
+    /// Optional IETF language tag (BCP 47) e.g., "en", "zh-CN", "ja", "ar"
+    /// Used for language-specific processing and accessibility
     pub language: Option<String>,
+    /// Optional ISO 15924 script code e.g., "Latn" (Latin), "Hans" (Simplified Chinese)
+    /// Distinguishes between different writing systems within the same language
     pub script: Option<String>,
+    /// Line ending convention used in the text file
+    /// Affects text processing on different operating systems
     pub line_breaks: LineBreakType,
+    /// Unicode normalization form applied to the text
+    /// Ensures consistent binary representation of equivalent strings
     pub normalization: TextNormalization,
 }
 

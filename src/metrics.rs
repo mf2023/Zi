@@ -15,21 +15,66 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+//! # Zi Metrics Module
+//!
+//! This module provides data quality metrics and statistical summaries for
+//! evaluating and monitoring data processing pipelines.
+//!
+//! ## Metrics Types
+//!
+//! - **ZiQualityMetrics**: Quality indicators computed from record batches
+//!   including toxicity scores, quality scores, duplicates, and error counts
+//! - **ZiStatisticSummary**: Statistical summaries of field distributions
+//!
+//! ## Usage
+//!
+//! ```rust
+//! use zi::metrics::{ZiQualityMetrics, ZiStatisticSummary};
+//! use zi::record::{ZiRecord, ZiRecordBatch};
+//!
+//! // Compute quality metrics for a batch
+//! let metrics = ZiQualityMetrics::compute(&batch);
+//! println!("Quality score: {}", metrics.quality_score_average);
+//! ```
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::record::ZiRecord;
 
+/// Container for data quality metrics computed from a batch of records.
+///
+/// ZiQualityMetrics provides a comprehensive view of data quality by computing
+/// various indicators from a collection of records. These metrics are useful for:
+///
+/// - **Quality Assessment**: Understanding the overall quality of data
+/// - **Monitoring**: Tracking quality trends over time
+/// - **Filtering**: Identifying low-quality records for removal
+/// - **Reporting**: Generating quality reports for stakeholders
+///
+/// # Computation
+///
+/// Metrics are computed synchronously by iterating over the record batch.
+/// For large datasets, consider computing metrics in parallel or sampling.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ZiQualityMetrics {
+    /// Total number of records in the batch
     pub total_records: usize,
+    /// Average number of characters in payloads
     pub average_payload_chars: f64,
+    /// Average number of tokens (whitespace-separated words) in payloads
     pub average_payload_tokens: f64,
+    /// Average toxicity score across all records (0.0 to 1.0)
     pub toxicity_average: f64,
+    /// Maximum toxicity score across all records (0.0 to 1.0)
     pub toxicity_max: f64,
+    /// Average quality score across all records (0.0 to 1.0)
     pub quality_score_average: f64,
+    /// Number of duplicate records detected
     pub duplicate_count: usize,
+    /// Number of records with empty payloads
     pub empty_count: usize,
+    /// Number of records with processing errors
     pub error_count: usize,
 }
 

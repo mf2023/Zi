@@ -15,22 +15,137 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+################################################################################
+# Cargo Configuration for Zi Rust Project
+################################################################################
+#
+# This file contains the global Cargo configuration for the Zi project,
+# defining build settings, dependency management, compiler optimization flags,
+# and platform-specific configurations for cross-platform compilation.
+#
+# Configuration Sections:
+# - [registry]: Package registry settings
+# - [net]: Network and connection settings
+# - [http]: HTTP client configuration
+# - [build]: Build process settings
+# - [profile.*]: Compiler optimization profiles
+# - [target.*]: Platform-specific compiler flags
+#
+# Usage:
+# This configuration is automatically read by Cargo when building any target
+# in the workspace. It applies to both local development and CI/CD pipelines.
+################################################################################
+
+# ================================================================================
+# Registry Configuration
+# ================================================================================
+#
+# [registry]
+# Defines the default package registry for downloading Rust dependencies.
+#
+# default: Specifies the default registry name. "crates-io" is the official
+#          Rust crate registry hosted at crates.io, which is the primary
+#          source for open-source Rust packages.
 [registry]
 default = "crates-io"
 
+# ================================================================================
+# Network Configuration
+# ================================================================================
+#
+# [net]
+# Controls network behavior when fetching dependencies from remote sources.
+#
+# retry: Maximum number of retry attempts when network operations fail.
+#        Setting this to 5 provides resilience against transient network
+#        issues commonly encountered in CI/CD environments or unstable networks.
+#
+# git-fetch-with-cli: When true, uses the git CLI for fetching git dependencies
+#                     instead of the built-in git implementation. This can resolve
+#                     compatibility issues with certain git configurations or
+#                     authentication methods.
+#
+# offline: When false (default), Cargo is allowed to fetch dependencies from
+#          the network. Setting to true would disable network access entirely,
+#          which is useful for offline builds but would fail if dependencies
+#          are not already cached.
 [net]
 retry = 5
 git-fetch-with-cli = true
 offline = false
 
+# ================================================================================
+# HTTP Client Configuration
+# ================================================================================
+#
+# [http]
+# Configures the HTTP client used for fetching crates and git repositories.
+#
+# timeout: Maximum time in seconds to wait for a single HTTP request to complete.
+#          The value of 60 seconds provides a reasonable balance between waiting
+#          for large downloads and not hanging indefinitely on failed connections.
+#
+# low-speed-limit: Minimum average download speed in bytes/second. If the average
+#                  speed falls below this threshold, the connection is considered
+#                  too slow and may be retried. The value of 10 bytes/second
+#                  accommodates very slow connections while still detecting
+#                  genuinely stalled downloads.
+#
+# multiplexing: When true, enables HTTP/2 multiplexing, which allows multiple
+#               requests to share a single TCP connection. This improves
+#               performance when downloading multiple crates simultaneously.
 [http]
 timeout = 60
 low-speed-limit = 10
 multiplexing = true
 
+# ================================================================================
+# Build Process Configuration
+# ================================================================================
+#
+# [build]
+# Controls various aspects of the compilation process.
+#
+# jobs: Number of parallel compilation jobs. Setting this to 8 enables
+#       parallel compilation using up to 8 CPU cores, significantly
+#       speeding up build times on multi-core systems. The value should
+#       be adjusted based on the available system resources.
 [build]
 jobs = 8
 
+# ================================================================================
+# Release Build Profile
+# ================================================================================
+#
+# [profile.release]
+# Optimization settings applied when building with the --release flag.
+# These settings prioritize runtime performance over compilation speed.
+#
+# opt-level: Maximum optimization level (0-3). Level 3 enables the most
+#            aggressive optimizations, including loop unrolling, function
+#            inlining, and vectorization, resulting in the fastest
+#            executable code at the cost of longer compile times.
+#
+# lto: Link-Time Optimization. "fat" enables full LTO, which performs
+#      optimization across all crates in the dependency graph at link time.
+#      This can significantly improve runtime performance but increases
+#      compilation time. Alternative values: "thin" for faster but less
+#      effective LTO, or "false" to disable LTO entirely.
+#
+# codegen-units: Number of code generation units. Setting to 1 gives the
+#                compiler maximum freedom to optimize across the entire crate,
+#                producing smaller and faster binaries at the cost of longer
+#                compilation times. Higher values parallelize compilation
+#                but may reduce optimization effectiveness.
+#
+# strip: When true, removes debug symbols from the final binary, reducing
+#        file size. This is appropriate for release builds where debug
+#        information is not needed.
+#
+# panic: Panic handler strategy. "abort" generates a smaller binary by
+#        using the abort() function instead of unwinding the stack. This
+#        is suitable for production builds where panic messages are not
+#        needed and binary size is a concern.
 [profile.release]
 opt-level = 3
 lto = "fat"
@@ -38,28 +153,96 @@ codegen-units = 1
 strip = true
 panic = "abort"
 
+# [profile.release.package."*"]
+# Applies specific optimization settings to all packages in the workspace
+# when building in release mode. This ensures consistent optimization
+# levels across all dependencies, not just the main crate.
+#
+# opt-level: Ensures all workspace dependencies are compiled with maximum
+#            optimization regardless of their default settings.
 [profile.release.package."*"]
 opt-level = 3
 
+# ================================================================================
+# Development Build Profile
+# ================================================================================
+#
+# [profile.dev]
+# Optimization settings for debug builds (default when building without
+# --release flag). These settings prioritize fast compilation and
+# debugging support over runtime performance.
+#
+# opt-level: Disables optimizations (level 0) for faster compilation
+#            and clearer debugging information.
+#
+# debug: Enables debug information generation, which is essential for
+#        debugging with tools like gdb, lldb, or IDE debuggers.
 [profile.dev]
 opt-level = 0
 debug = true
 
+# ================================================================================
+# Test Build Profile
+# ================================================================================
+#
+# [profile.test]
+# Settings applied when running tests with `cargo test`.
+# Similar to dev profile but optimized for test execution.
+#
+# opt-level: Disables optimizations for faster test compilation.
+#
+# debug: Includes debug information for debugging test failures.
 [profile.test]
 opt-level = 0
 debug = true
 
+# ================================================================================
+# Platform-Specific Compiler Flags
+# ================================================================================
+#
+# [target.<triple>]
+# These sections configure platform-specific Rust compiler flags (rustflags)
+# for different target platforms. The rustflags apply to all crates compiled
+# for that target.
+#
+# -C target-cpu=native: This flag instructs the compiler to generate code
+#                      optimized for the CPU architecture of the build machine.
+#                      This produces the fastest possible code but may not
+#                      be portable to other CPU types. For CI/CD builds,
+#                      specific target CPUs are used to ensure portability.
+#
+# Supported target triples in this configuration:
+# - x86_64-pc-windows-msvc: 64-bit Windows (Microsoft Visual C++)
+# - x86_64-unknown-linux-gnu: 64-bit Linux (GNU toolchain)
+# - aarch64-unknown-linux-gnu: 64-bit ARM Linux (GNU toolchain)
+# - x86_64-apple-darwin: 64-bit macOS (Intel)
+# - aarch64-apple-darwin: 64-bit macOS (Apple Silicon)
+
+# Windows x64 (x86_64-pc-windows-msvc)
+# Native CPU optimization for Windows builds on x86_64 architecture.
+# Uses MSVC toolchain which is the standard C compiler on Windows.
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-cpu=native"]
 
+# Linux x64 (x86_64-unknown-linux-gnu)
+# Native CPU optimization for Linux builds on x86_64 architecture.
+# Uses GNU toolchain (gcc) as the default system linker.
 [target.x86_64-unknown-linux-gnu]
 rustflags = ["-C", "target-cpu=native"]
 
+# Linux ARM64 (aarch64-unknown-linux-gnu)
+# Native CPU optimization for 64-bit ARM Linux systems.
+# This target is commonly used for ARM servers and embedded systems.
 [target.aarch64-unknown-linux-gnu]
 rustflags = ["-C", "target-cpu=native"]
 
+# macOS x64 (x86_64-apple-darwin)
+# Native CPU optimization for macOS builds on Intel processors.
 [target.x86_64-apple-darwin]
 rustflags = ["-C", "target-cpu=native"]
 
+# macOS ARM64 (aarch64-apple-darwin)
+# Native CPU optimization for macOS builds on Apple Silicon (M1/M2/M3).
+# Also known as Apple Silicon or ARM64 macOS.
 [target.aarch64-apple-darwin]
 rustflags = ["-C", "target-cpu=native"]
