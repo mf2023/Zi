@@ -4,7 +4,7 @@
 # Copyright © 2025-2026 Wenze Wei. All Rights Reserved.
 #
 # This file is part of Zi.
-# The Zi project belongs to the Dunimd project team.
+# The Zi project belongs to the Dunimd Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # You may not use this file except in compliance with the License.

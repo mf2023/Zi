@@ -1,10 +1,10 @@
 # Copyright © 2025-2026 Wenze Wei. All Rights Reserved.
 #
 # This file is part of Zi.
-# The Zi project belongs to the Dunimd project team.
+# The Zi project belongs to the Dunimd Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
+# You may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
@@ -14,6 +14,49 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+################################################################################
+# Zi Rust Library and Python Wheel Build Pipeline
+################################################################################
+#
+# Purpose:
+# This GitHub Actions workflow builds the Zi Rust library and generates
+# distributable Python wheel packages (.whl files) for multiple platforms,
+# architectures, and Python versions.
+#
+# Architecture Overview:
+# 1. Rust Library Compilation Phase: Four dedicated jobs compile the Zi
+#    library as a cdylib for each target platform:
+#    - Linux x64 (x86_64-unknown-linux-gnu)
+#    - Linux arm64 (aarch64-unknown-linux-gnu)
+#    - Windows x64 (x86_64-pc-windows-msvc)
+#    - macOS x64 (x86_64-apple-darwin)
+#    - macOS arm64 (aarch64-apple-darwin)
+#
+# 2. Python Wheel Generation Phase: Matrix jobs generate Python wheels
+#    for all supported platform/architecture/Python version combinations.
+#
+# Build Strategy:
+# - Native compilation on matching architecture runners (no cross-compilation)
+# - Linux ARM64 uses ubuntu-24.04-arm for proper ARM64 native builds
+# - macOS x64 uses macos-15-intel for Intel builds
+# - maturin as the build tool (Rust/Python integration framework)
+#
+# Supported Platforms:
+# - Linux: x64 and arm64 architectures
+# - Windows: x64 architecture
+# - macOS: x64 and arm64 (Apple Silicon) architectures
+#
+# Supported Python Versions: 3.8, 3.9, 3.10, 3.11, 3.12, 3.13, 3.14
+#
+# Trigger Conditions:
+# - Automatic: On push to main/master/develop branches
+# - Manual: Workflow dispatch allows manual execution
+#
+# Artifacts:
+# - Python wheel artifacts (.whl files) per matrix combination
+# - Artifacts are uploaded using actions/upload-artifact@v4
+################################################################################
 
 name: Build Wheels
 
@@ -50,7 +93,10 @@ env:
   CARGO_NET_TIMEOUT: 60
 
 jobs:
-  build-rust-linux-x64:
+  ################################################################################
+  # Job: Build Rust Library for Linux x64
+  ################################################################################
+  build-rust-linux:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Zi
@@ -87,6 +133,9 @@ jobs:
           path: target/release/libZi.rlib
           retention-days: 7
 
+  ################################################################################
+  # Job: Build Rust Library for Linux ARM64
+  ################################################################################
   build-rust-linux-arm64:
     runs-on: ubuntu-24.04-arm
     steps:
@@ -124,7 +173,10 @@ jobs:
           path: target/release/libZi.rlib
           retention-days: 7
 
-  build-rust-windows-x64:
+  ################################################################################
+  # Job: Build Rust Library for Windows x64
+  ################################################################################
+  build-rust-windows:
     runs-on: windows-latest
     steps:
       - name: Checkout Zi
@@ -156,8 +208,11 @@ jobs:
           path: target/release/Zi.lib
           retention-days: 7
 
-  build-rust-macos-x64:
-    runs-on: macos-latest
+  ################################################################################
+  # Job: Build Rust Library for macOS x64
+  ################################################################################
+  build-rust-macos:
+    runs-on: macos-15-intel
     steps:
       - name: Checkout Zi
         uses: actions/checkout@v4
@@ -188,8 +243,11 @@ jobs:
           path: target/release/libZi.rlib
           retention-days: 7
 
+  ################################################################################
+  # Job: Build Rust Library for macOS ARM64
+  ################################################################################
   build-rust-macos-arm64:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout Zi
         uses: actions/checkout@v4
@@ -220,8 +278,11 @@ jobs:
           path: target/release/libZi.rlib
           retention-days: 7
 
-  test-rust:
-    needs: [build-rust-linux-x64, build-rust-linux-arm64, build-rust-windows-x64, build-rust-macos-x64, build-rust-macos-arm64]
+  ################################################################################
+  # Job: Run Rust Tests
+  ################################################################################
+  run-rust-tests:
+    needs: [build-rust-linux, build-rust-linux-arm64, build-rust-windows, build-rust-macos, build-rust-macos-arm64]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Zi
@@ -249,8 +310,11 @@ jobs:
       - name: Run Rust tests
         run: cargo test --release --features full --no-fail-fast -- --test-threads=4
 
+  ################################################################################
+  # Job: Build Python Wheels for Linux x64
+  ################################################################################
   build-wheels-linux:
-    needs: [build-rust-linux-x64]
+    needs: [build-rust-linux]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -296,9 +360,12 @@ jobs:
           path: dist/*.whl
           retention-days: 7
 
+  ################################################################################
+  # Job: Build Python Wheels for Linux ARM64
+  ################################################################################
   build-wheels-linux-arm64:
     needs: [build-rust-linux-arm64]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     strategy:
       matrix:
         python: ['3.10', '3.11', '3.12', '3.13']
@@ -347,8 +414,11 @@ jobs:
           path: dist/*.whl
           retention-days: 7
 
+  ################################################################################
+  # Job: Build Python Wheels for Windows x64
+  ################################################################################
   build-wheels-windows:
-    needs: [build-rust-windows-x64]
+    needs: [build-rust-windows]
     runs-on: windows-latest
     strategy:
       matrix:
@@ -389,9 +459,12 @@ jobs:
           path: dist/*.whl
           retention-days: 7
 
-  build-wheels-macos-x64:
-    needs: [build-rust-macos-x64]
-    runs-on: macos-latest
+  ################################################################################
+  # Job: Build Python Wheels for macOS x64
+  ################################################################################
+  build-wheels-macos:
+    needs: [build-rust-macos]
+    runs-on: macos-15-intel
     strategy:
       matrix:
         python: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
@@ -421,6 +494,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-wheel-x64-${{ matrix.python }}-
 
+      - name: Configure macOS linker for PyO3
+        run: |
+          mkdir -p .cargo
+          echo '[target.x86_64-apple-darwin]' > .cargo/config.toml
+          echo 'rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]' >> .cargo/config.toml
+
       - name: Build wheel
         run: maturin build --release --features pyo3 --interpreter python${{ matrix.python }} --out dist
 
@@ -431,9 +510,12 @@ jobs:
           path: dist/*.whl
           retention-days: 7
 
+  ################################################################################
+  # Job: Build Python Wheels for macOS ARM64
+  ################################################################################
   build-wheels-macos-arm64:
     needs: [build-rust-macos-arm64]
-    runs-on: macos-latest
+    runs-on: macos-15
     strategy:
       matrix:
         python: ['3.10', '3.11', '3.12', '3.13']
@@ -465,6 +547,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-
 
+      - name: Configure macOS linker for PyO3
+        run: |
+          mkdir -p .cargo
+          echo '[target.aarch64-apple-darwin]' > .cargo/config.toml
+          echo 'rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]' >> .cargo/config.toml
+
       - name: Build wheel
         env:
           RUSTFLAGS: "-C target-cpu=apple-m1"
@@ -477,7 +565,10 @@ jobs:
           path: dist/*.whl
           retention-days: 7
 
-  test-python:
+  ################################################################################
+  # Job: Run Python Tests
+  ################################################################################
+  run-python-tests:
     needs: [build-wheels-linux]
     runs-on: ubuntu-latest
     strategy:
@@ -510,8 +601,11 @@ jobs:
       - name: Run operator tests
         run: python tests/python/test_operators.py
 
+  ################################################################################
+  # Job: Publish to PyPI (Production Releases)
+  ################################################################################
   publish-pypi:
-    needs: [build-wheels-linux, build-wheels-linux-arm64, build-wheels-windows, build-wheels-macos-x64, build-wheels-macos-arm64, test-python]
+    needs: [build-wheels-linux, build-wheels-linux-arm64, build-wheels-windows, build-wheels-macos, build-wheels-macos-arm64, run-python-tests]
     runs-on: ubuntu-latest
     if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true')
     environment:
@@ -532,8 +626,11 @@ jobs:
         with:
           skip-existing: true
 
-  publish-test-pypi:
-    needs: [build-wheels-linux, build-wheels-windows, build-wheels-macos-x64, test-python]
+  ################################################################################
+  # Job: Publish to TestPyPI
+  ################################################################################
+  publish-testpypi:
+    needs: [build-wheels-linux, build-wheels-windows, build-wheels-macos, run-python-tests]
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish_test_pypi == 'true'
     environment:
@@ -555,8 +652,11 @@ jobs:
           repository-url: https://test.pypi.org/legacy/
           skip-existing: true
 
-  publish-crates:
-    needs: [build-rust-linux-x64, build-rust-windows-x64, build-rust-macos-x64, test-rust]
+  ################################################################################
+  # Job: Publish to crates.io
+  ################################################################################
+  publish-crate:
+    needs: [build-rust-linux, build-rust-windows, build-rust-macos, build-rust-macos-arm64, run-rust-tests]
     runs-on: ubuntu-latest
     if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_crates == 'true')
     steps:
@@ -576,8 +676,30 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
         run: cargo publish --token $CARGO_REGISTRY_TOKEN
 
-  benchmark:
-    needs: [build-rust-linux-x64]
+  ################################################################################
+  # Job: Sync Release to Gitee
+  ################################################################################
+  sync-to-gitee:
+    needs: [build-rust-linux, build-rust-linux-arm64, build-rust-windows, build-rust-macos, build-rust-macos-arm64, build-wheels-linux, build-wheels-windows, build-wheels-macos, build-wheels-macos-arm64]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    steps:
+      - name: Checkout Zi
+        uses: actions/checkout@v4
+
+      - name: Push to Gitee
+        run: |
+          git clone --mirror https://github.com/${{ github.repository }}.git zi-mirror
+          cd zi-mirror
+          git push --mirror https://${{ secrets.GITEE_TOKEN }}@gitee.com/dunimd/zi.git
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+
+  ################################################################################
+  # Job: Run Benchmarks
+  ################################################################################
+  run-benchmarks:
+    needs: [build-rust-linux]
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
