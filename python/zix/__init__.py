@@ -25,10 +25,6 @@ This Python package provides high-performance bindings to the Zi Rust library,
 enabling Python applications to leverage comprehensive data quality assessment, cleaning,
 transformation, sampling, and augmentation capabilities.
 
-Key Components:
-- Core: ZiRecord, ZiMetrics, ZiTextProcessor, ZiVersionInfo
-- Operators: ZiOperator (90 operators)
-
 Example Usage:
     from zix import ZiRecord, ZiTextProcessor, ZiOperator
     
@@ -48,27 +44,22 @@ __version__ = "0.1.0"
 __author__ = "Dunimd Team"
 __license__ = "Apache-2.0"
 
-import zix
+from zix import (
+    ZiRecord,
+    ZiMetrics,
+    ZiTextProcessor,
+    ZiVersionInfo,
+    ZiOperator,
+    ZiPipelineBuilder,
+    ZiPipeline,
+)
 
 __all__ = [
-    # Core classes
     'ZiRecord',
     'ZiMetrics',
     'ZiTextProcessor',
     'ZiVersionInfo',
-    
-    # Operator class
     'ZiOperator',
-
-    # Pipeline classes
     'ZiPipelineBuilder',
     'ZiPipeline',
 ]
-
-ZiRecord = zix.ZiRecord
-ZiMetrics = zix.ZiMetrics
-ZiTextProcessor = zix.ZiTextProcessor
-ZiVersionInfo = zix.ZiVersionInfo
-ZiOperator = zix.ZiOperator
-ZiPipelineBuilder = zix.ZiPipelineBuilder
-ZiPipeline = zix.ZiPipeline

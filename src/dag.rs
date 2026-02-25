@@ -161,9 +161,10 @@ impl ZiDAG {
             .collect();
 
         for node in self.nodes.values() {
-            for dep in &node.dependencies {
-                if let Some(count) = in_degree.get_mut(dep) {
-                    *count += 1;
+            let dep_count = node.dependencies.len();
+            if dep_count > 0 {
+                if let Some(count) = in_degree.get_mut(&node.id) {
+                    *count = dep_count;
                 }
             }
         }

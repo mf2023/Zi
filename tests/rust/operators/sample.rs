@@ -21,7 +21,7 @@ use serde_json::json;
 
 #[test]
 fn sample_random_factory_basic() {
-    let config = json!({"rate": 0.5, "seed": 42});
+    let config = json!({"ratio": 0.5, "seed": 42});
     let operator = sample_random_factory(&config).unwrap();
     let mut batch = Vec::new();
     for i in 0..10 {

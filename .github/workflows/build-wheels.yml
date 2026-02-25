@@ -93,11 +93,11 @@ jobs:
         with:
           path: ~/.cargo/registry,~/.cargo/git,target
           key: ${{ runner.os }}-arm64-cargo-zi-${{ hashFiles('**/Cargo.lock') }}
-      - run: cargo build --release --features full
+      - run: cargo build --release --target aarch64-unknown-linux-gnu --features full
       - uses: actions/upload-artifact@v4
         with:
           name: rust-linux-arm64
-          path: target/release/libZi.*
+          path: target/aarch64-unknown-linux-gnu/release/libZi.*
 
   build-rust-windows:
     runs-on: windows-latest
@@ -350,17 +350,15 @@ jobs:
           pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
       - name: Install dependencies
-        run: pip install maturin auditwheel -i https://pypi.org/simple --quiet
+        run: pip install maturin -i https://pypi.org/simple --quiet
 
       - name: Build wheel (non-Docker)
         if: matrix.docker != true
-        run: maturin build --release --features pyo3 --target ${{ matrix.target }} -o dist
+        run: maturin build --release --features pyo3 --target ${{ matrix.target }} --manylinux auto -o dist
 
       - name: Build wheel (Docker)
         if: matrix.docker == true
-        run: |
-          maturin build --release --features pyo3 --target ${{ matrix.target }} -o wheelhouse
-          auditwheel repair wheelhouse/*.whl -w dist --plat ${{ matrix.manylinux }}_${{ matrix.target == 'aarch64-unknown-linux-gnu' && 'aarch64' || 'x86_64' }}
+        run: maturin build --release --features pyo3 --target ${{ matrix.target }} --manylinux auto -o wheelhouse
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
