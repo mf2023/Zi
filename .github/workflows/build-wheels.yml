@@ -1,10 +1,10 @@
 # Copyright © 2025-2026 Wenze Wei. All Rights Reserved.
 #
 # This file is part of Zi.
-# The Zi project belongs to the Dunimd Team.
+# The Zi project belongs to the Dunimd team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
-# You may not use this file except in compliance with the License.
+# you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
@@ -24,18 +24,6 @@
 # distributable Python wheel packages (.whl files) for multiple platforms,
 # architectures, and Python versions.
 #
-# Architecture Overview:
-# 1. Rust Library Compilation Phase: Four dedicated jobs compile the Zi
-#    library as a cdylib for each target platform:
-#    - Linux x64 (x86_64-unknown-linux-gnu)
-#    - Linux arm64 (aarch64-unknown-linux-gnu)
-#    - Windows x64 (x86_64-pc-windows-msvc)
-#    - macOS x64 (x86_64-apple-darwin)
-#    - macOS arm64 (aarch64-apple-darwin)
-#
-# 2. Python Wheel Generation Phase: Matrix jobs generate Python wheels
-#    for all supported platform/architecture/Python version combinations.
-#
 # Build Strategy:
 # - Native compilation on matching architecture runners (no cross-compilation)
 # - Linux ARM64 uses ubuntu-24.04-arm for proper ARM64 native builds
@@ -50,40 +38,20 @@
 # Supported Python Versions: 3.8, 3.9, 3.10, 3.11, 3.12, 3.13, 3.14
 #
 # Trigger Conditions:
-# - Automatic: On push to main/master/develop branches
+# - Automatic: On push to master branch or release published
 # - Manual: Workflow dispatch allows manual execution
-#
-# Artifacts:
-# - Python wheel artifacts (.whl files) per matrix combination
-# - Artifacts are uploaded using actions/upload-artifact@v4
 ################################################################################
 
-name: Build Wheels
+name: Build and Publish Zi (Rust/Python)
 
 on:
   push:
-    branches: [main, master, develop]
-    tags:
-      - 'v*'
-  pull_request:
-    branches: [main, master]
+    branches:
+      - master
+      - main
+  release:
+    types: [published]
   workflow_dispatch:
-    inputs:
-      publish_pypi:
-        description: 'Publish to PyPI'
-        required: false
-        default: false
-        type: boolean
-      publish_test_pypi:
-        description: 'Publish to TestPyPI'
-        required: false
-        default: false
-        type: boolean
-      publish_crates:
-        description: 'Publish to crates.io'
-        required: false
-        default: false
-        type: boolean
 
 env:
   CARGO_TERM_COLOR: always
@@ -94,636 +62,431 @@ env:
 
 jobs:
   ################################################################################
-  # Job: Build Rust Library for Linux x64
+  # Phase 1: Build Rust Libraries (Parallel)
   ################################################################################
+
   build-rust-linux:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Zi
-        uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
+      - uses: actions/cache@v4
         with:
-          targets: x86_64-unknown-linux-gnu
-
-      - name: Cache cargo
-        uses: actions/cache@v4
+          path: ~/.cargo/registry,~/.cargo/git,target
+          key: ${{ runner.os }}-cargo-zi-${{ hashFiles('**/Cargo.lock') }}
+      - run: cargo build --release --features full
+      - uses: actions/upload-artifact@v4
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-zi-x64-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-zi-x64-
+          name: rust-linux-x64
+          path: target/release/libZi.*
 
-      - name: Build Zi
-        run: cargo build --release --features full
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: zi-rust-linux-x64
-          path: target/release/libZi.rlib
-          retention-days: 7
-
-  ################################################################################
-  # Job: Build Rust Library for Linux ARM64
-  ################################################################################
   build-rust-linux-arm64:
     runs-on: ubuntu-24.04-arm
     steps:
-      - name: Checkout Zi
-        uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-unknown-linux-gnu
-
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
+      - uses: actions/cache@v4
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-zi-arm64-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-zi-arm64-
-
-      - name: Build Zi
-        run: cargo build --release --features full
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          path: ~/.cargo/registry,~/.cargo/git,target
+          key: ${{ runner.os }}-arm64-cargo-zi-${{ hashFiles('**/Cargo.lock') }}
+      - run: cargo build --release --features full
+      - uses: actions/upload-artifact@v4
         with:
-          name: zi-rust-linux-arm64
-          path: target/release/libZi.rlib
-          retention-days: 7
+          name: rust-linux-arm64
+          path: target/release/libZi.*
 
-  ################################################################################
-  # Job: Build Rust Library for Windows x64
-  ################################################################################
   build-rust-windows:
     runs-on: windows-latest
     steps:
-      - name: Checkout Zi
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
         with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Cache cargo
-        uses: actions/cache@v4
+          path: ~/.cargo/registry,~/.cargo/git,target
+          key: ${{ runner.os }}-cargo-zi-${{ hashFiles('**/Cargo.lock') }}
+      - run: cargo build --release --features full
+      - uses: actions/upload-artifact@v4
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-zi-x64-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-zi-x64-
-
-      - name: Build Zi
-        run: cargo build --release --features full
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: zi-rust-windows-x64
+          name: rust-windows-x64
           path: target/release/Zi.lib
-          retention-days: 7
 
-  ################################################################################
-  # Job: Build Rust Library for macOS x64
-  ################################################################################
   build-rust-macos:
     runs-on: macos-15-intel
     steps:
-      - name: Checkout Zi
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-apple-darwin
-
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-zi-x64-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-zi-x64-
-
-      - name: Build Zi
-        run: cargo build --release --features full
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          path: ~/.cargo/registry,~/.cargo/git,target
+          key: ${{ runner.os }}-cargo-zi-${{ hashFiles('**/Cargo.lock') }}
+      - run: |
+          mkdir -p .cargo
+          echo '[target.x86_64-apple-darwin]' > .cargo/config.toml
+          echo 'rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]' >> .cargo/config.toml
+      - run: cargo build --release --target x86_64-apple-darwin --features full
+      - uses: actions/upload-artifact@v4
         with:
-          name: zi-rust-macos-x64
-          path: target/release/libZi.rlib
-          retention-days: 7
+          name: rust-macos-x64
+          path: target/x86_64-apple-darwin/release/libZi.*
 
-  ################################################################################
-  # Job: Build Rust Library for macOS ARM64
-  ################################################################################
   build-rust-macos-arm64:
     runs-on: macos-15
     steps:
-      - name: Checkout Zi
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin
-
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-zi-arm64-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-zi-arm64-
-
-      - name: Build Zi
-        run: cargo build --release --features full
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          path: ~/.cargo/registry,~/.cargo/git,target
+          key: ${{ runner.os }}-arm64-cargo-zi-${{ hashFiles('**/Cargo.lock') }}
+      - run: |
+          mkdir -p .cargo
+          echo '[target.aarch64-apple-darwin]' > .cargo/config.toml
+          echo 'rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]' >> .cargo/config.toml
+      - run: cargo build --release --target aarch64-apple-darwin --features full
+      - uses: actions/upload-artifact@v4
         with:
-          name: zi-rust-macos-arm64
-          path: target/release/libZi.rlib
-          retention-days: 7
+          name: rust-macos-arm64
+          path: target/aarch64-apple-darwin/release/libZi.*
 
   ################################################################################
-  # Job: Run Rust Tests
+  # Phase 2: Build Python Wheels (Matrix)
   ################################################################################
-  run-rust-tests:
+
+  build-python:
     needs: [build-rust-linux, build-rust-linux-arm64, build-rust-windows, build-rust-macos, build-rust-macos-arm64]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Zi
-        uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-zi-test-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-zi-test-
-
-      - name: Run Rust tests
-        run: cargo test --release --features full --no-fail-fast -- --test-threads=4
-
-  ################################################################################
-  # Job: Build Python Wheels for Linux x64
-  ################################################################################
-  build-wheels-linux:
-    needs: [build-rust-linux]
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
     strategy:
+      fail-fast: false
       matrix:
-        python: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
+        include:
+          # Linux x64
+          - python: '3.8'
+            runs-on: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: manylinux_2_39
+            docker: true
+          - python: '3.9'
+            runs-on: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: manylinux_2_39
+            docker: true
+          - python: '3.10'
+            runs-on: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: manylinux_2_39
+            docker: true
+          - python: '3.11'
+            runs-on: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: manylinux_2_39
+            docker: true
+          - python: '3.12'
+            runs-on: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: manylinux_2_39
+            docker: true
+          - python: '3.13'
+            runs-on: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: manylinux_2_39
+            docker: true
+          - python: '3.14'
+            runs-on: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: manylinux_2_39
+            docker: true
+          # Linux ARM64
+          - python: '3.8'
+            runs-on: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: manylinux_2_39
+            docker: false
+          - python: '3.9'
+            runs-on: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: manylinux_2_39
+            docker: false
+          - python: '3.10'
+            runs-on: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: manylinux_2_39
+            docker: false
+          - python: '3.11'
+            runs-on: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: manylinux_2_39
+            docker: false
+          - python: '3.12'
+            runs-on: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: manylinux_2_39
+            docker: false
+          - python: '3.13'
+            runs-on: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: manylinux_2_39
+            docker: false
+          - python: '3.14'
+            runs-on: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: manylinux_2_39
+            docker: false
+          # Windows x64
+          - python: '3.8'
+            runs-on: windows-latest
+            target: x86_64-pc-windows-msvc
+          - python: '3.9'
+            runs-on: windows-latest
+            target: x86_64-pc-windows-msvc
+          - python: '3.10'
+            runs-on: windows-latest
+            target: x86_64-pc-windows-msvc
+          - python: '3.11'
+            runs-on: windows-latest
+            target: x86_64-pc-windows-msvc
+          - python: '3.12'
+            runs-on: windows-latest
+            target: x86_64-pc-windows-msvc
+          - python: '3.13'
+            runs-on: windows-latest
+            target: x86_64-pc-windows-msvc
+          - python: '3.14'
+            runs-on: windows-latest
+            target: x86_64-pc-windows-msvc
+          # macOS x64
+          - python: '3.8'
+            runs-on: macos-15-intel
+            target: x86_64-apple-darwin
+          - python: '3.9'
+            runs-on: macos-15-intel
+            target: x86_64-apple-darwin
+          - python: '3.10'
+            runs-on: macos-15-intel
+            target: x86_64-apple-darwin
+          - python: '3.11'
+            runs-on: macos-15-intel
+            target: x86_64-apple-darwin
+          - python: '3.12'
+            runs-on: macos-15-intel
+            target: x86_64-apple-darwin
+          - python: '3.13'
+            runs-on: macos-15-intel
+            target: x86_64-apple-darwin
+          - python: '3.14'
+            runs-on: macos-15-intel
+            target: x86_64-apple-darwin
+          # macOS ARM64
+          - python: '3.8'
+            runs-on: macos-15
+            target: aarch64-apple-darwin
+          - python: '3.9'
+            runs-on: macos-15
+            target: aarch64-apple-darwin
+          - python: '3.10'
+            runs-on: macos-15
+            target: aarch64-apple-darwin
+          - python: '3.11'
+            runs-on: macos-15
+            target: aarch64-apple-darwin
+          - python: '3.12'
+            runs-on: macos-15
+            target: aarch64-apple-darwin
+          - python: '3.13'
+            runs-on: macos-15
+            target: aarch64-apple-darwin
+          - python: '3.14'
+            runs-on: macos-15
+            target: aarch64-apple-darwin
+
     steps:
-      - name: Checkout Zi
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Install maturin
-        run: pip install maturin[patchelf]
-
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-wheel-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-wheel-${{ matrix.python }}-
+          toolchain: stable
 
-      - name: Build wheel
-        run: maturin build --release --features pyo3 --interpreter python${{ matrix.python }} --out dist
-
-      - name: Upload wheel
-        uses: actions/upload-artifact@v4
-        with:
-          name: zi-wheel-linux-${{ matrix.python }}
-          path: dist/*.whl
-          retention-days: 7
-
-  ################################################################################
-  # Job: Build Python Wheels for Linux ARM64
-  ################################################################################
-  build-wheels-linux-arm64:
-    needs: [build-rust-linux-arm64]
-    runs-on: ubuntu-24.04-arm
-    strategy:
-      matrix:
-        python: ['3.10', '3.11', '3.12', '3.13']
-    steps:
-      - name: Checkout Zi
-        uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-unknown-linux-gnu
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-
-      - name: Install maturin
-        run: pip install maturin[patchelf]
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-
-
-      - name: Build wheel
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-        run: maturin build --release --features pyo3 --target aarch64-unknown-linux-gnu --interpreter python${{ matrix.python }} --out dist
-
-      - name: Upload wheel
-        uses: actions/upload-artifact@v4
-        with:
-          name: zi-wheel-linux-arm64-${{ matrix.python }}
-          path: dist/*.whl
-          retention-days: 7
-
-  ################################################################################
-  # Job: Build Python Wheels for Windows x64
-  ################################################################################
-  build-wheels-windows:
-    needs: [build-rust-windows]
-    runs-on: windows-latest
-    strategy:
-      matrix:
-        python: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
-    steps:
-      - name: Checkout Zi
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-
-      - name: Install maturin
-        run: pip install maturin
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-wheel-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-wheel-${{ matrix.python }}-
-
-      - name: Build wheel
-        run: maturin build --release --features pyo3 --interpreter python --out dist
-
-      - name: Upload wheel
-        uses: actions/upload-artifact@v4
-        with:
-          name: zi-wheel-windows-${{ matrix.python }}
-          path: dist/*.whl
-          retention-days: 7
-
-  ################################################################################
-  # Job: Build Python Wheels for macOS x64
-  ################################################################################
-  build-wheels-macos:
-    needs: [build-rust-macos]
-    runs-on: macos-15-intel
-    strategy:
-      matrix:
-        python: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
-    steps:
-      - name: Checkout Zi
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-
-      - name: Install maturin
-        run: pip install maturin
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-wheel-x64-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-wheel-x64-${{ matrix.python }}-
-
-      - name: Configure macOS linker for PyO3
+      - name: Configure macOS linker
+        if: runner.os == 'macOS'
         run: |
           mkdir -p .cargo
           echo '[target.x86_64-apple-darwin]' > .cargo/config.toml
           echo 'rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]' >> .cargo/config.toml
-
-      - name: Build wheel
-        run: maturin build --release --features pyo3 --interpreter python${{ matrix.python }} --out dist
-
-      - name: Upload wheel
-        uses: actions/upload-artifact@v4
-        with:
-          name: zi-wheel-macos-x64-${{ matrix.python }}
-          path: dist/*.whl
-          retention-days: 7
-
-  ################################################################################
-  # Job: Build Python Wheels for macOS ARM64
-  ################################################################################
-  build-wheels-macos-arm64:
-    needs: [build-rust-macos-arm64]
-    runs-on: macos-15
-    strategy:
-      matrix:
-        python: ['3.10', '3.11', '3.12', '3.13']
-    steps:
-      - name: Checkout Zi
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-
-      - name: Install maturin
-        run: pip install maturin
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-wheel-arm64-${{ matrix.python }}-
-
-      - name: Configure macOS linker for PyO3
-        run: |
-          mkdir -p .cargo
-          echo '[target.aarch64-apple-darwin]' > .cargo/config.toml
+          echo '' >> .cargo/config.toml
+          echo '[target.aarch64-apple-darwin]' >> .cargo/config.toml
           echo 'rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]' >> .cargo/config.toml
 
-      - name: Build wheel
-        env:
-          RUSTFLAGS: "-C target-cpu=apple-m1"
-        run: maturin build --release --features pyo3 --target aarch64-apple-darwin --interpreter python${{ matrix.python }} --out dist
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip,~/Library/Caches/pip,~\AppData\Local\pip\Cache
+          key: pip-${{ matrix.python }}-${{ matrix.target }}-${{ hashFiles('**/pyproject.toml', '**/Cargo.toml') }}
 
-      - name: Upload wheel
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry,~/.cargo/git,target
+          key: rust-${{ matrix.target }}-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
+
+      - name: Upgrade pip
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+
+      - name: Install dependencies
+        run: pip install maturin auditwheel -i https://pypi.org/simple --quiet
+
+      - name: Build wheel (non-Docker)
+        if: matrix.docker != true
+        run: maturin build --release --features pyo3 --target ${{ matrix.target }} -o dist
+
+      - name: Build wheel (Docker)
+        if: matrix.docker == true
+        run: |
+          maturin build --release --features pyo3 --target ${{ matrix.target }} -o wheelhouse
+          auditwheel repair wheelhouse/*.whl -w dist --plat ${{ matrix.manylinux }}_${{ matrix.target == 'aarch64-unknown-linux-gnu' && 'aarch64' || 'x86_64' }}
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: zi-wheel-macos-arm64-${{ matrix.python }}
-          path: dist/*.whl
-          retention-days: 7
+          name: python-${{ matrix.target }}-${{ matrix.python }}
+          path: dist/
 
   ################################################################################
-  # Job: Run Python Tests
+  # Phase 3: Tests
   ################################################################################
+
+  run-rust-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry,~/.cargo/git,target
+          key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
+      - run: cargo test --release --features full --no-fail-fast -- --test-threads=4
+
   run-python-tests:
-    needs: [build-wheels-linux]
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ['3.10', '3.11', '3.12', '3.13', '3.14']
     steps:
-      - name: Checkout Zi
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python }}
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
+      - run: |
+          python -m pip install --upgrade pip
+          pip install maturin
+      - run: maturin build --release --features pyo3 -o dist
+      - run: pip install dist/*.whl
+      - run: python -c "import zix; print('Zi imported successfully')"
+      - run: python tests/python/test_core.py
+      - run: python tests/python/test_operators.py
 
-      - name: Download wheel
-        uses: actions/download-artifact@v4
-        with:
-          name: zi-wheel-linux-${{ matrix.python }}
-          path: dist
-
-      - name: Install wheel
-        run: pip install dist/*.whl
-
-      - name: Test import
-        run: python -c "import zix; print('Zi imported successfully')"
-
-      - name: Run core tests
-        run: python tests/python/test_core.py
-
-      - name: Run operator tests
-        run: python tests/python/test_operators.py
-
-  ################################################################################
-  # Job: Publish to PyPI (Production Releases)
-  ################################################################################
-  publish-pypi:
-    needs: [build-wheels-linux, build-wheels-linux-arm64, build-wheels-windows, build-wheels-macos, build-wheels-macos-arm64, run-python-tests]
-    runs-on: ubuntu-latest
-    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true')
-    environment:
-      name: pypi
-      url: https://pypi.org/p/Zi
-    permissions:
-      id-token: write
-    steps:
-      - name: Download all wheels
-        uses: actions/download-artifact@v4
-        with:
-          pattern: zi-wheel-*
-          path: dist
-          merge-multiple: true
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          skip-existing: true
-
-  ################################################################################
-  # Job: Publish to TestPyPI
-  ################################################################################
-  publish-testpypi:
-    needs: [build-wheels-linux, build-wheels-windows, build-wheels-macos, run-python-tests]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish_test_pypi == 'true'
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/Zi
-    permissions:
-      id-token: write
-    steps:
-      - name: Download all wheels
-        uses: actions/download-artifact@v4
-        with:
-          pattern: zi-wheel-*
-          path: dist
-          merge-multiple: true
-
-      - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-          skip-existing: true
-
-  ################################################################################
-  # Job: Publish to crates.io
-  ################################################################################
-  publish-crate:
-    needs: [build-rust-linux, build-rust-windows, build-rust-macos, build-rust-macos-arm64, run-rust-tests]
-    runs-on: ubuntu-latest
-    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_crates == 'true')
-    steps:
-      - name: Checkout Zi
-        uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Publish to crates.io
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-        run: cargo publish --token $CARGO_REGISTRY_TOKEN
-
-  ################################################################################
-  # Job: Sync Release to Gitee
-  ################################################################################
-  sync-to-gitee:
-    needs: [build-rust-linux, build-rust-linux-arm64, build-rust-windows, build-rust-macos, build-rust-macos-arm64, build-wheels-linux, build-wheels-windows, build-wheels-macos, build-wheels-macos-arm64]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-    steps:
-      - name: Checkout Zi
-        uses: actions/checkout@v4
-
-      - name: Push to Gitee
-        run: |
-          git clone --mirror https://github.com/${{ github.repository }}.git zi-mirror
-          cd zi-mirror
-          git push --mirror https://${{ secrets.GITEE_TOKEN }}@gitee.com/dunimd/zi.git
-        env:
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-
-  ################################################################################
-  # Job: Run Benchmarks
-  ################################################################################
   run-benchmarks:
-    needs: [build-rust-linux]
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - name: Checkout Zi
-        uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
+      - uses: actions/cache@v4
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
+          path: ~/.cargo/registry,~/.cargo/git,target
           key: ${{ runner.os }}-bench-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bench-
+      - run: cargo bench --features full -- --save-baseline pr-baseline || true
 
-      - name: Run benchmarks
-        run: cargo bench --features full -- --save-baseline pr-baseline || true
+  ################################################################################
+  # Phase 4: Publish
+  ################################################################################
+
+  publish-pypi:
+    needs: build-python
+    if: github.event_name == 'release' && !contains(github.event.release.name, 'Test')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: python-*
+          merge-multiple: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install twine
+      - run: twine upload dist/*.whl
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+  publish-testpypi:
+    needs: build-python
+    if: github.event_name == 'release' && contains(github.event.release.name, 'Test')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: python-*
+          merge-multiple: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install twine
+      - run: twine upload --repository-url https://test.pypi.org/legacy/ dist/*.whl
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TEST_API_TOKEN }}
+
+  publish-crate:
+    needs: [build-rust-linux, build-rust-linux-arm64, build-rust-windows, build-rust-macos, build-rust-macos-arm64]
+    if: github.event_name == 'release' && !contains(github.event.release.name, 'Test')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev libssl-dev
+      - run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  sync-to-gitee:
+    needs: [build-rust-linux, build-rust-linux-arm64, build-rust-windows, build-rust-macos, build-rust-macos-arm64, build-python]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync Release to Gitee
+        run: |
+          GITEE_API="https://gitee.com/api/v5/repos/dunimd/zi/releases"
+          jq -n \
+            --arg token "${{ secrets.GITEE_TOKEN }}" \
+            --arg tag "${{ github.event.release.tag_name }}" \
+            --arg name "${{ github.event.release.name }}" \
+            --arg body "${{ github.event.release.body }}" \
+            '{
+              access_token: $token,
+              tag_name: $tag,
+              name: $name,
+              body: $body,
+              prerelease: false,
+              target_commitish: "master"
+            }' > payload.json
+          curl -X POST "$GITEE_API" -H "Content-Type: application/json" -d @payload.json
