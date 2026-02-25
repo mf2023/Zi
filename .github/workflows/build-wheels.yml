@@ -352,13 +352,13 @@ jobs:
       - name: Install dependencies
         run: pip install maturin -i https://pypi.org/simple --quiet
 
-      - name: Build wheel (non-Docker)
-        if: matrix.docker != true
+      - name: Build wheel (Linux)
+        if: runner.os == 'Linux'
         run: maturin build --release --features pyo3 --target ${{ matrix.target }} --manylinux auto -o dist
 
-      - name: Build wheel (Docker)
-        if: matrix.docker == true
-        run: maturin build --release --features pyo3 --target ${{ matrix.target }} --manylinux auto -o wheelhouse
+      - name: Build wheel (macOS/Windows)
+        if: runner.os != 'Linux'
+        run: maturin build --release --features pyo3 --target ${{ matrix.target }} -o dist
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
