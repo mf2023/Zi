@@ -161,7 +161,6 @@ jobs:
   ################################################################################
 
   build-python:
-    needs: [build-rust-linux, build-rust-linux-arm64, build-rust-windows, build-rust-macos, build-rust-macos-arm64]
     runs-on: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false

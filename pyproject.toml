@@ -56,4 +56,5 @@ classifiers = [
 
 [tool.maturin]
 module-name = "zix"
+python-source = "python"
 features = ["pyo3"]

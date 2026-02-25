@@ -48,20 +48,7 @@ __version__ = "0.1.0"
 __author__ = "Dunimd Team"
 __license__ = "Apache-2.0"
 
-from .zix import (
-    # Core classes
-    ZiRecord,
-    ZiMetrics,
-    ZiTextProcessor,
-    ZiVersionInfo,
-    
-    # Operator class
-    ZiOperator,
-
-    # Pipeline classes
-    ZiPipelineBuilder,
-    ZiPipeline,
-)
+import zix
 
 __all__ = [
     # Core classes
@@ -77,3 +64,11 @@ __all__ = [
     'ZiPipelineBuilder',
     'ZiPipeline',
 ]
+
+ZiRecord = zix.ZiRecord
+ZiMetrics = zix.ZiMetrics
+ZiTextProcessor = zix.ZiTextProcessor
+ZiVersionInfo = zix.ZiVersionInfo
+ZiOperator = zix.ZiOperator
+ZiPipelineBuilder = zix.ZiPipelineBuilder
+ZiPipeline = zix.ZiPipeline
