@@ -78,8 +78,8 @@ jobs:
 
       - name: Build and install Python package
         run: |
-          maturin build --release --features pyo3 -o dist
-          pip install dist/*.whl
+          cd python
+          pip install -e ..
 
       - name: Build Python documentation
         run: pdoc -o target/doc/python zix
