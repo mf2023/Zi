@@ -76,11 +76,10 @@ jobs:
       - name: Build Rust documentation
         run: cargo doc --no-deps --features full
 
-      - name: Build Python wheel
-        run: maturin build --release --features pyo3 -o dist
-
-      - name: Install Python package
-        run: pip install dist/*.whl
+      - name: Build and install Python package
+        run: |
+          maturin build --release --features pyo3 -o dist
+          pip install dist/*.whl
 
       - name: Build Python documentation
         run: pdoc -o target/doc/python zix
