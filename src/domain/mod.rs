@@ -25,7 +25,7 @@
 //!
 //! The domain module implements a hierarchical type system:
 //! - **ZiDomain**: Enum that categorizes data into distinct modalities (Text, Image, Audio, Video, MultiModal)
-//! - **ZiSample<T>**: Generic container for individual data samples with metadata, timestamp, and versioning
+//! - **`ZiSample<T>`**: Generic container for individual data samples with metadata, timestamp, and versioning
 //! - **ZiEncoder**: Trait for encoding/decoding samples to/from various formats
 //! - **Payload Types**: Domain-specific structs (TextPayload, ImagePayload, AudioPayload, VideoPayload)
 //!   that implement the ZiSamplePayload trait
@@ -379,7 +379,7 @@ impl<P: ZiSamplePayload> ZiSample<P> {
     ///
     /// # Arguments
     ///
-    /// - `uid`: Unique identifier (converted to bytes via Into<Vec<u8>>)
+    /// - `uid`: Unique identifier (converted to bytes via `Into<Vec<u8>>`)
     /// - `payload`: The domain-specific payload data
     /// - `metadata`: Optional metadata (None uses JSON Null)
     ///
@@ -460,7 +460,7 @@ pub type ZiSampleBatch<P> = Vec<ZiSample<P>>;
 /// # Type Parameters
 ///
 /// - `P`: The payload type that implements ZiSamplePayload
-/// - `T`: The target serialization format (e.g., Vec<u8>, String, custom struct)
+/// - `T`: The target serialization format (e.g., `Vec<u8>`, String, custom struct)
 ///
 /// # Error Handling
 ///

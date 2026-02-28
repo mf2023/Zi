@@ -4,6 +4,8 @@
 
 [English](README.md) | 简体中文
 
+[帮助文档](https://mf2023.github.io/zi/zix/) | [更新日志](CHANGELOG.md) | [安全](SECURITY.md) | [贡献](CONTRIBUTING.md) | [行为准则](CODE_OF_CONDUCT.md)
+
 <a href="https://space.bilibili.com/3493284091529457" target="_blank">
     <img alt="BiliBili" src="https://img.shields.io/badge/BiliBili-Dunimd-00A1D6?style=flat-square&logo=bilibili"/>
 </a>

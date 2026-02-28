@@ -115,7 +115,7 @@ pub trait ZiOperator: std::fmt::Debug {
     /// # Returns
     ///
     /// Returns a Result containing:
-    /// - Ok(Vec<ZiRecord>): The processed batch (may contain 0, equal, or more records)
+    /// - Ok(`Vec<ZiRecord>`): The processed batch (may contain 0, equal, or more records)
     /// - Err(ZiError): If processing failed
     ///
     /// # Notes

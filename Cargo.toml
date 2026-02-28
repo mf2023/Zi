@@ -84,7 +84,7 @@ embedding = ["dep:fastembed"]
 [dependencies]
 # DMSC Infrastructure
 # Core infrastructure providing caching and observability primitives
-dmsc = { version = "0.1.8-beta.2", features = [
+dmsc = { version = "0.1.8-beta.3", features = [
     "cache",
     "observability",
 ] }

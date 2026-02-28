@@ -1,17 +1,21 @@
 <div align="center">
-  <h1 style="display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 8px;">
-    <span style="display: flex; align-items: center; gap: 12px;">
-      <img src="../assets/svg/zi.svg" width="48" height="48" alt="Zi">
-      <span style="font-size: 0.6em; color: #666; font-weight: normal;">Zi Data Quality Framework</span>
-    </span>
-  </h1>
 
-  English | [简体中文](README.zh.md)
-</div>
+<h1 style="display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 8px;">
+  <span style="display: flex; align-items: center; gap: 12px;">Zi</span>
+  <span style="font-size: 0.6em; color: #666; font-weight: normal;">Zi Library for Python</span>
+</h1>
+
+English | [简体中文](README.zh.md)
+
+[Help Documentation](https://mf2023.github.io/zi/zix/) | [Changelog](../CHANGELOG.md) | [Security](../SECURITY.md) | [Contributing](../CONTRIBUTING.md) | [Code of Conduct](../CODE_OF_CONDUCT.md)
 
 <a href="https://space.bilibili.com/3493284091529457" target="_blank">
     <img alt="BiliBili" src="https://img.shields.io/badge/BiliBili-Dunimd-00A1D6?style=flat-square&logo=bilibili"/>
 </a>
+<a href="https://x.com/Dunimd2025" target="_blank">
+    <img alt="X" src="https://img.shields.io/badge/X-Dunimd-000000?style=flat-square&logo=x"/>
+</a>
+
 <a href="https://gitee.com/dunimd" target="_blank">
     <img alt="Gitee" src="https://img.shields.io/badge/Gitee-Dunimd-C71D23?style=flat-square&logo=gitee"/>
 </a>
@@ -25,83 +29,151 @@
     <img alt="ModelScope" src="https://img.shields.io/badge/ModelScope-Dunimd-1E6CFF?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTQiIGhlaWdodD0iMTQiIHZpZXdCb3g9IjAgMCAxNCAxNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTcuMDA2IDBDMy4xNDIgMCAwIDMuMTQyIDAgNy4wMDZTMy4xNDIgMTQuMDEyIDcuMDA2IDE0LjAxMkMxMC44NyAxNC4wMTIgMTQuMDEyIDEwLjg3IDE0LjAxMiA3LjAwNkMxNC4wMTIgMy4xNDIgMTAuODcgMCA3LjAwNiAwWiIgZmlsbD0iIzFFNkNGRiIvPgo8L3N2Zz4K"/>
 </a>
 
-## 🏗️ Core Architecture
+<a href="https://pypi.org/project/zix/" target="_blank">
+    <img alt="PyPI" src="https://img.shields.io/badge/PyPI-ZiX-3775A9?style=flat-square&logo=pypi"/>
+</a>
+
+**Zi** — A unified LLM dataset processing engine with Python bindings. Built for high-performance data quality assessment, cleaning, transformation, sampling, and augmentation.
+
+</div>
+
+<h2 align="center">🏗️ Core Architecture</h2>
 
 ### 📐 Modular Design
-Zi adopts a highly modular architecture with 8 core modules, enabling on-demand composition and seamless extension:
+
+Zi adopts a highly modular architecture with 12 core modules, enabling on-demand composition and seamless extension:
+
+<div align="center">
 
 | Module | Description | Python Support |
 |:--------|:------------|:---------------|
 | **record** | Record management and batch processing | ✅ Full |
-| **operators** | Data processing operators (90 operators) | ✅ Full |
-| **pipeline** | Data pipeline construction and execution | ✅ Full |
-| **ingest** | Data format detection and streaming | ✅ Full |
-| **export** | Data export and streaming | ✅ Full |
-| **inspect** | Data profiling, statistics, and diff analysis | ✅ Full |
-| **enrich** | Data synthesis, augmentation, and annotation | ✅ Full |
+| **pipeline** | Sequential/parallel/conditional processing | ✅ Full |
+| **dag** | DAG-based execution with topological sorting | ✅ Full |
+| **operator** | Type-safe trait-based operator system | ✅ Full |
+| **operators** | 90+ operator implementations | ✅ Full |
+| **ingest** | Data ingestion (JSONL/JSON/CSV/Parquet) | ✅ Full |
+| **export** | Data export (compression, sharding) | ✅ Full |
+| **inspect** | Data profiling, statistics, diff analysis | ✅ Full |
+| **enrich** | Data synthesis, augmentation, annotation | ✅ Full |
+| **dsl** | DSL parser (YAML/JSON configuration) | ✅ Full |
+| **orbit** | Plugin system for dynamic operators | ✅ Full |
+| **distributed** | Distributed processing support | ✅ Full |
+
+</div>
 
 ### 🚀 Key Features
 
 #### 📊 Comprehensive Data Processing
-- 90 built-in operators for filtering, transformation, and enrichment
-- Support for multiple data formats (JSON, JSONL, CSV, Parquet, Avro)
-- Advanced data quality assessment and profiling
-- Data synthesis and augmentation capabilities
+- 90+ built-in operators for filtering, transformation, and enrichment
+- Support for multiple data formats (JSON, JSONL, CSV, Parquet)
+- Streaming read/write for large files
+- Compression support (Gzip, Zstd)
 
-#### 🔍 Data Inspection
+#### 🔍 Quality Assessment
+- Multi-metric text quality scoring (ASCII ratio, entropy, readability)
+- Toxicity detection using built-in lexicon
+- Language detection based on script analysis
+- Configurable quality thresholds and filtering
+
+#### 🤖 LLM-Specific Operators
+- Token counting (Chinese/English mixed estimation)
+- Conversation format conversion (ChatML, ShareGPT, Alpaca, OpenAI)
+- Context length filtering/truncation/splitting
+- QA pair extraction (Markdown, numbered, auto-detection)
+- Instruction tuning data formatting
+
+#### 📝 Deduplication
+- SimHash-based near-duplicate detection
+- MinHash-based similarity estimation
+- Semantic deduplication support
+
+#### 🔬 Data Inspection
 - Statistical analysis (numeric, string, text statistics)
 - Data profiling with anomaly detection
 - Diff analysis for data comparison
 - Distribution analysis with histograms and percentiles
 
-#### 📝 Data Pipeline
-- Builder pattern for pipeline construction
-- Execution with metrics tracking
-- Support for complex pipeline topologies
+<h2 align="center">🛠️ Installation & Environment</h2>
 
-### 🛠️ Installation
+### Prerequisites
 
-#### Prerequisites
 - **Python**: 3.8+ (Windows ARM64 requires 3.11+)
 - **pip**: Latest version
 - **Platforms**: Linux, macOS, Windows
 
-#### Install from PyPI
+### Quick Setup
+
+Install Zi Python package:
 
 ```bash
 pip install zix
 ```
 
-Or install from source:
+Or add to your `requirements.txt`:
+
+```
+zix==0.1.0
+```
+
+### Build from Source
 
 ```bash
+# Clone the repository
+git clone https://github.com/mf2023/Zi.git
+cd Zi
+
 # Install maturin
 pip install maturin
 
 # Build and install
-maturin develop
+maturin develop --features pyo3
 ```
 
-### 🚀 Quick Start
+<h2 align="center">⚡ Quick Start</h2>
 
-#### Basic Usage
+### Basic Usage
 
 ```python
-from zix import ZiRecordPy, ZiTextProcessor, ZiOperatorPy
+from zix import ZiRecordPy, ZiOperatorPy, ZiPipelineBuilderPy
 
-# Create a record
-record = ZiRecordPy(id="1", payload='{"text": "hello"}')
+# Create records
+records = [
+    ZiRecordPy(id="1", payload='{"text": "Hello world"}'),
+    ZiRecordPy(id="2", payload='{"text": "你好世界"}'),
+]
 
-# Use text processor
-processor = ZiTextProcessor()
-lang, confidence = processor.detect_language("Hello, world!")
-
-# Use operators directly
-op = ZiOperatorPy("filter.equals", '{"path": "payload.text", "value": "hello"}')
-filtered = op.apply([record])
+# Use single operator
+filter_op = ZiOperatorPy("filter.contains", '{"path": "payload.text", "value": "Hello"}')
+filtered = filter_op.apply(records)
+print(f"Filtered: {len(filtered)} records")
 ```
 
-#### Text Processing
+### Pipeline Processing
+
+```python
+from zix import ZiRecordPy, ZiPipelineBuilderPy
+
+# Create records
+records = [
+    ZiRecordPy(id="1", payload='{"text": "Hello world"}'),
+    ZiRecordPy(id="2", payload='{"text": "你好世界"}'),
+]
+
+# Build pipeline with multiple operators
+pipeline = (ZiPipelineBuilderPy()
+    .add_operator("lang.detect", '{"path": "payload.text"}')
+    .add_operator("quality.score", '{"path": "payload.text"}')
+    .add_operator("llm.token_count", '{"text_field": "payload.text"}')
+    .add_operator("quality.filter", '{"min": 0.5}')
+    .build())
+
+# Execute pipeline
+result = pipeline.run(records)
+print(f"Processed: {len(result)} records")
+```
+
+### Text Processing
 
 ```python
 from zix import ZiTextProcessor
@@ -125,107 +197,216 @@ redacted = processor.redact_pii("My email is test@example.com")
 print(f"Redacted: {redacted}")
 ```
 
-#### Operator Usage
+### Data Ingestion & Export
 
 ```python
-from zix import ZiRecordPy, ZiOperatorPy
+from zix import ZiStreamReader, ZiStreamWriter
 
-# Create records
-records = [
-    ZiRecordPy(id="1", payload='{"text": "hello world"}'),
-    ZiRecordPy(id="2", payload='{"text": "goodbye world"}'),
-]
+# Read data from file
+reader = ZiStreamReader("data.jsonl", batch_size=10000)
+batch = reader.read_all()
 
-# Use filter operator
-filter_op = ZiOperatorPy("filter.contains", '{"path": "payload.text", "value": "hello"}')
-filtered = filter_op.apply(records)
-print(f"Filtered: {len(filtered)} records")
+# Process data...
 
-# Use quality operator
-quality_op = ZiOperatorPy("quality.score", '{"path": "payload.text"}')
-scored = quality_op.apply(records)
-
-# Use language detection operator
-lang_op = ZiOperatorPy("lang.detect", '{"path": "payload.text"}')
-detected = lang_op.apply(records)
+# Export data
+writer = ZiStreamWriter("output.jsonl")
+stats = writer.write(batch)
+print(f"Written: {stats.records_written} records")
 ```
 
-### 📋 Available Operators
+### DSL Configuration
 
-| Category | Operators |
-|:---------|:----------|
-| **Filter** | `filter.equals`, `filter.contains`, `filter.regex`, `filter.range`, `filter.in`, `filter.exists` |
-| **Quality** | `quality.score`, `quality.filter`, `quality.toxicity` |
-| **Dedup** | `dedup.simhash`, `dedup.minhash`, `dedup.semantic` |
-| **LLM** | `llm.token_count`, `llm.conversation_format`, `llm.context_length`, `llm.qa_extract` |
-| **Transform** | `transform.normalize`, `transform.map`, `transform.template`, `transform.chain` |
-| **Field** | `field.select`, `field.rename`, `field.drop`, `field.copy`, `field.move`, `field.flatten` |
-| **Merge** | `merge.concat`, `merge.union`, `merge.intersect`, `merge.difference`, `merge.zip` |
-| **Split** | `split.random`, `split.stratified`, `split.sequential`, `split.k_fold`, `split.chunk` |
-| **Sample** | `sample.random`, `sample.top`, `sample.balanced`, `sample.stratified` |
-| **Shuffle** | `shuffle`, `shuffle.deterministic`, `shuffle.block`, `shuffle.stratified` |
-| **Token** | `token.count`, `token.stats`, `token.filter`, `token.histogram` |
-| **Lang** | `lang.detect`, `lang.confidence` |
-| **Metadata** | `metadata.enrich`, `metadata.remove`, `metadata.keep`, `metadata.rename` |
-| **PII** | `pii.redact` |
-| **Augment** | `augment.synonym`, `augment.noise` |
-| **Limit** | `limit` |
+```yaml
+# pipeline.yaml
+steps:
+  - operator: lang.detect
+    config:
+      path: payload.text
+      
+  - operator: quality.score
+    config:
+      path: payload.text
+      
+  - operator: llm.token_count
+    config:
+      text_field: payload.text
+      output_field: metadata.token_count
+      
+  - operator: quality.filter
+    config:
+      min: 0.5
+```
 
-### 🔧 Configuration
+```python
+from zix import ZiDSLParser, ZiDSLCompiler
 
-#### Python Package Configuration
+# Parse DSL configuration
+parser = ZiDSLParser()
+program = parser.parse_file("pipeline.yaml")
 
-Zi uses `maturin` for building and packaging. The package configuration is defined in `pyproject.toml`:
+# Compile to pipeline
+compiler = ZiDSLCompiler()
+pipeline = compiler.compile(program)
 
-- **Package Name**: `zix`
-- **Module Name**: `zix`
-- **Build System**: `maturin`
-- **Python Version**: 3.8+
+# Execute
+result = pipeline.run(records)
+```
 
-#### Environment Variables
+<h2 align="center">📋 Available Operators</h2>
 
-- `ZI_LOG_LEVEL`: Set logging level (DEBUG, INFO, WARN, ERROR)
-- `ZI_BATCH_SIZE`: Default batch size for operations
+### Filter Operators (filter.*)
 
-### 📁 Documentation
+| Operator | Description |
+|:---------|:------------|
+| `filter.equals` | Field equality filter |
+| `filter.not_equals` | Field inequality filter |
+| `filter.in` / `filter.not_in` | Inclusion/exclusion filter |
+| `filter.contains` | String contains filter |
+| `filter.regex` | Regular expression filter |
+| `filter.range` | Numeric range filter |
+| `filter.exists` / `filter.not_exists` | Field existence check |
 
-For detailed API documentation, see:
-- [API Reference](../doc/en/04-api-reference/)
-- [Usage Examples](../doc/en/05-usage-examples/)
+### Quality Operators (quality.*)
 
-### 🧪 Development & Testing
+| Operator | Description |
+|:---------|:------------|
+| `quality.score` | Text quality scoring |
+| `quality.filter` | Quality threshold filter |
+| `quality.toxicity` | Toxicity detection |
 
-#### Running Tests
+### Dedup Operators (dedup.*)
+
+| Operator | Description |
+|:---------|:------------|
+| `dedup.simhash` | SimHash deduplication |
+| `dedup.minhash` | MinHash deduplication |
+| `dedup.semantic` | Semantic deduplication |
+
+### LLM Operators (llm.*)
+
+| Operator | Description |
+|:---------|:------------|
+| `llm.token_count` | Token counting |
+| `llm.conversation_format` | Conversation format conversion |
+| `llm.context_length` | Context length filtering |
+| `llm.qa_extract` | QA pair extraction |
+| `llm.instruction_format` | Instruction formatting |
+
+### Merge Operators (merge.*)
+
+| Operator | Description |
+|:---------|:------------|
+| `merge.concat` | Concatenate datasets |
+| `merge.batch` | Batch merge records |
+| `merge.union` | Union with deduplication |
+| `merge.intersect` | Intersection of datasets |
+| `merge.difference` | Difference of datasets |
+| `merge.zip` | Zip merge fields |
+
+### Split Operators (split.*)
+
+| Operator | Description |
+|:---------|:------------|
+| `split.random` | Random split (train/valid/test) |
+| `split.stratified` | Stratified split |
+| `split.sequential` | Sequential split |
+| `split.kfold` | K-fold split |
+| `split.chunk` | Chunk split |
+
+### Field Operators (field.*)
+
+| Operator | Description |
+|:---------|:------------|
+| `field.select` | Select fields |
+| `field.rename` | Rename fields |
+| `field.drop` | Drop fields |
+| `field.copy` | Copy field |
+| `field.move` | Move field |
+| `field.flatten` | Flatten nested fields |
+
+### Transform Operators (transform.*)
+
+| Operator | Description |
+|:---------|:------------|
+| `transform.normalize` | Text normalization |
+| `transform.map` | Field value mapping |
+| `transform.template` | Template rendering |
+| `transform.chain` | Chain transforms |
+
+### Sample Operators (sample.*)
+
+| Operator | Description |
+|:---------|:------------|
+| `sample.random` | Random sampling |
+| `sample.top` | Top-K sampling |
+| `sample.balanced` | Balanced sampling |
+| `sample.stratified` | Stratified sampling |
+
+<h2 align="center">🔧 Configuration</h2>
+
+### Environment Variables
+
+| Variable | Description | Default |
+|:---------|:------------|:--------|
+| `ZI_LOG_LEVEL` | Logging level | INFO |
+| `ZI_BATCH_SIZE` | Default batch size | 10000 |
+
+### Feature Flags
+
+When building from source, you can enable specific features:
+
+```bash
+# Build with all features
+maturin develop --features pyo3
+
+# Build with specific features
+maturin develop --features "pyo3,parquet,csv"
+```
+
+<h2 align="center">🧪 Development & Testing</h2>
+
+### Running Tests
 
 ```bash
 # Install development dependencies
 pip install -e .
 
 # Run Python tests
-python -m pytest tests/
+python -m pytest tests/python/
+
+# Run specific test module
+python -m pytest tests/python/test_core.py
 ```
 
-### ❓ Frequently Asked Questions
+<h2 align="center">❓ Frequently Asked Questions</h2>
 
 **Q: How to use Zi in my project?**
 A: Install via `pip install zix` and import the classes you need.
 
 **Q: What operators are available?**
-A: 90 operators including filter, transform, quality, token, dedup, and more.
+A: 90+ operators including filter, transform, quality, token, dedup, and more.
 
 **Q: Can I use Zi with pandas?**
-A: Yes! Convert pandas DataFrames to `ZiRecordPy` objects, then process with `ZiOperatorPy`.
+A: Yes! Convert pandas DataFrames to `ZiRecordPy` objects, then process with operators.
 
-**Q: How do I get started?**
-A: See the Quick Start section above for basic usage examples.
+**Q: How do I handle large files?**
+A: Use `ZiStreamReader` for streaming batch processing.
 
-### 🌏 Community & Citation
+**Q: How to add custom operators?**
+A: Implement the `ZiOperator` trait in Rust and register via the operator registry.
+
+**Q: What Python versions are supported?**
+A: Python 3.8 and above are supported. Note: Windows ARM64 requires Python 3.11+.
+
+<h2 align="center">🌏 Community & Citation</h2>
 
 - Welcome to submit Issues and PRs!
 - Gitee: https://gitee.com/dunimd/zi.git
 - GitHub: https://github.com/mf2023/Zi.git
 
-### 📄 License & Open Source Agreements
+<div align="center">
+
+## 📄 License & Open Source Agreements
 
 ### 🏛️ Project License
 
@@ -239,15 +420,15 @@ This project uses **Apache License 2.0** open source agreement, see [LICENSE](..
 
 ### 📋 Dependencies License
 
-<p align="center">
-  | 📦 Package | 📜 License |
-  |:-----------|:-----------|
-  | setuptools | MIT |
-  | maturin | Apache 2.0 |
-  | pyo3 | Apache 2.0 |
-  | pytest | MIT |
-  | pytest-asyncio | Apache 2.0 |
-  | black | MIT |
-  | isort | MIT |
-  | mypy | MIT |
-</p>
+| 📦 Package | 📜 License |
+|:-----------|:-----------|
+| setuptools | MIT |
+| maturin | Apache 2.0 |
+| pyo3 | Apache 2.0 |
+| pytest | MIT |
+| pytest-asyncio | Apache 2.0 |
+| black | MIT |
+| isort | MIT |
+| mypy | MIT |
+
+</div>

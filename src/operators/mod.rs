@@ -43,7 +43,7 @@
 //! ## Usage
 //!
 //! Operators are typically created through factory functions and applied to
-//! record batches through the [`ZiOperator`] trait.
+//! record batches through the [`crate::operator::ZiOperator`] trait.
 
 pub mod augment;
 pub mod dedup;
