@@ -172,36 +172,68 @@ from _zix import (
     # Used as the fundamental unit of data throughout the framework
     # Supports various payload types (JSON, string, binary)
     ZiRecord,
-    
+
     # ZiMetrics: Container for data quality metrics
     # Calculates and stores quality scores including completeness,
     # validity, consistency, and uniqueness metrics
     ZiMetrics,
-    
+
     # ZiTextProcessor: Natural language processing utilities
     # Provides language detection with confidence scores and other
     # text analysis capabilities
     ZiTextProcessor,
-    
+
     # ZiVersionInfo: Version information accessor
     # Provides access to both the Python binding version and underlying
     # Rust library version for debugging and compatibility checking
     ZiVersionInfo,
-    
+
     # ZiOperator: Individual data processing operator
     # Represents a single operation (filter, transform, validate, etc.)
     # that can be applied to records
     ZiOperator,
-    
+
     # ZiPipelineBuilder: Fluent builder for constructing pipelines
     # Provides a chainable API for building complex multi-stage
     # processing pipelines with type-safe operator composition
     ZiPipelineBuilder,
-    
+
     # ZiPipeline: Executable processing pipeline
     # Represents a complete, executable data processing workflow
     # that processes records through multiple operator stages
     ZiPipeline,
+
+    # ZiSynthesizer: Data synthesis from templates
+    # Generates synthetic records based on configuration templates
+    ZiSynthesizer,
+
+    # ZiAnnotator: Data annotation for labels and tags
+    # Adds annotations to records based on configured rules
+    ZiAnnotator,
+
+    # ZiAugmenter: Data augmentation for training data
+    # Applies transformations to expand and diversify training datasets
+    ZiAugmenter,
+
+    # ZiDAG: Directed Acyclic Graph for pipeline dependencies
+    # Manages complex workflow dependencies with cycle detection
+    ZiDAG,
+
+    # ZiProfiler: Data profiling and quality analysis
+    # Generates comprehensive data quality reports
+    ZiProfiler,
+
+    # ZiStatistics: Statistical calculations on datasets
+    # Computes descriptive statistics for data analysis
+    ZiStatistics,
+
+    # ZiStreamReader: Streaming data input
+    # Efficiently reads large datasets in streaming fashion
+    ZiStreamReader,
+
+    # ZiStreamWriter: Streaming data output
+    # Writes records to files with configurable formats
+    ZiStreamWriter,
 )
 
 # ================================================================================
@@ -217,15 +249,31 @@ __all__ = [
     # Core data structures
     'ZiRecord',
     'ZiMetrics',
-    
+
     # Text processing
     'ZiTextProcessor',
-    
+
     # Version information
     'ZiVersionInfo',
-    
+
     # Operators and pipelines
     'ZiOperator',
     'ZiPipelineBuilder',
     'ZiPipeline',
+
+    # Data enrichment
+    'ZiSynthesizer',
+    'ZiAnnotator',
+    'ZiAugmenter',
+
+    # Workflow management
+    'ZiDAG',
+
+    # Data inspection
+    'ZiProfiler',
+    'ZiStatistics',
+
+    # Streaming I/O
+    'ZiStreamReader',
+    'ZiStreamWriter',
 ]

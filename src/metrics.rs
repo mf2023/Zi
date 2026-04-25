@@ -175,10 +175,16 @@ impl ZiStatisticSummary {
         let min = sorted[0];
         let max = sorted[count - 1];
         let median = sorted[count / 2];
-        let p25 = sorted[(count as f64 * 0.25) as usize];
-        let p75 = sorted[(count as f64 * 0.75) as usize];
-        let p95 = sorted[(count as f64 * 0.95) as usize];
-        let p99 = sorted[(count as f64 * 0.99) as usize];
+
+        let p25_idx = (count as f64 * 0.25) as usize;
+        let p75_idx = (count as f64 * 0.75) as usize;
+        let p95_idx = (count as f64 * 0.95) as usize;
+        let p99_idx = (count as f64 * 0.99) as usize;
+
+        let p25 = if count < 4 || p25_idx >= count { max } else { sorted[p25_idx] };
+        let p75 = if count < 4 || p75_idx >= count { max } else { sorted[p75_idx] };
+        let p95 = if count < 20 || p95_idx >= count { max } else { sorted[p95_idx] };
+        let p99 = if count < 100 || p99_idx >= count { max } else { sorted[p99_idx] };
 
         Self {
             count,

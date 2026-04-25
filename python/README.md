@@ -56,7 +56,7 @@ Zi adopts a highly modular architecture with 12 core modules, enabling on-demand
 | **export** | Data export (compression, sharding) | ✅ Full |
 | **inspect** | Data profiling, statistics, diff analysis | ✅ Full |
 | **enrich** | Data synthesis, augmentation, annotation | ✅ Full |
-| **dsl** | DSL parser (YAML/JSON configuration) | ✅ Full |
+| **dsl** | DSL parser (YAML/JSON configuration) | ⚠️ Rust only |
 | **orbit** | Plugin system for dynamic operators | ✅ Full |
 | **distributed** | Distributed processing support | ✅ Full |
 
@@ -214,41 +214,25 @@ stats = writer.write(batch)
 print(f"Written: {stats.records_written} records")
 ```
 
-### DSL Configuration
+### DSL Configuration (Rust only)
 
-```yaml
-# pipeline.yaml
-steps:
-  - operator: lang.detect
-    config:
-      path: payload.text
-      
-  - operator: quality.score
-    config:
-      path: payload.text
-      
-  - operator: llm.token_count
-    config:
-      text_field: payload.text
-      output_field: metadata.token_count
-      
-  - operator: quality.filter
-    config:
-      min: 0.5
-```
+DSL configuration is available in the Rust implementation. For Python, use `ZiPipelineBuilderPy` to build pipelines programmatically:
 
 ```python
-from zix import ZiDSLParser, ZiDSLCompiler
+from zix import ZiRecordPy, ZiPipelineBuilderPy
 
-# Parse DSL configuration
-parser = ZiDSLParser()
-program = parser.parse_file("pipeline.yaml")
+records = [
+    ZiRecordPy(id="1", payload='{"text": "Hello world"}'),
+    ZiRecordPy(id="2", payload='{"text": "你好世界"}'),
+]
 
-# Compile to pipeline
-compiler = ZiDSLCompiler()
-pipeline = compiler.compile(program)
+pipeline = (ZiPipelineBuilderPy()
+    .add_operator("lang.detect", '{"path": "payload.text"}')
+    .add_operator("quality.score", '{"path": "payload.text"}')
+    .add_operator("llm.token_count", '{"text_field": "payload.text"}')
+    .add_operator("quality.filter", '{"min": 0.5}')
+    .build())
 
-# Execute
 result = pipeline.run(records)
 ```
 
